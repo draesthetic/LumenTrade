@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Trade Analytics</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Trade Analytics</h1>
+    <p class="muted">Upload a Zerodha tradebook (.xlsx or .csv) to compute NAV, drawdown, and full trade statistics.</p>
+  </header>
+
+  <section class="upload-card">
+    <form id="upload-form">
+      <label>
+        Tradebook file
+        <input type="file" name="file" id="file" accept=".xlsx,.xls,.csv" required />
+      </label>
+      <label>
+        Starting capital (&#8377;)
+        <input type="number" name="startingCapital" id="startingCapital" value="1000000" min="1" step="1" required />
+      </label>
+      <button type="submit">Analyze</button>
+    </form>
+    <div id="status" class="muted"></div>
+  </section>
+
+  <section id="results" hidden>
+    <div class="charts">
+      <div class="chart-card">
+        <h2>NAV Curve</h2>
+        <canvas id="nav-chart"></canvas>
+      </div>
+      <div class="chart-card">
+        <h2>Drawdown</h2>
+        <canvas id="dd-chart"></canvas>
+      </div>
+    </div>
+
+    <div class="metrics" id="metrics"></div>
+
+    <div class="trades-card">
+      <h2>Closed Trades</h2>
+      <div class="table-wrap">
+        <table id="trades-table">
+          <thead>
+            <tr>
+              <th data-key="symbol">Symbol</th>
+              <th data-key="side">Side</th>
+              <th data-key="qty">Qty</th>
+              <th data-key="entryPrice">Entry</th>
+              <th data-key="exitPrice">Exit</th>
+              <th data-key="entryTime">Entry Time</th>
+              <th data-key="exitTime">Exit Time</th>
+              <th data-key="durationMs">Duration</th>
+              <th data-key="pnl">P&amp;L</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>
