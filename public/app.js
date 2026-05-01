@@ -1,3 +1,13 @@
+/* ── Theme toggle ────────────────────────────────────────────────────────── */
+(function () {
+  if (localStorage.getItem('theme') === 'light') document.body.classList.add('light');
+  document.getElementById('theme-toggle').addEventListener('click', () => {
+    const isLight = document.body.classList.toggle('light');
+    localStorage.setItem('theme', isLight ? 'light' : 'dark');
+    if (navChart || ddChart) updateChartTheme();
+  });
+})();
+
 /* ── Globals ─────────────────────────────────────────────────────────────── */
 let navChart, ddChart;
 let allTrades      = [];
@@ -251,6 +261,9 @@ function buildDdChart(labels, values) {
   });
 }
 
+function chartTickColor() { return document.body.classList.contains('light') ? '#8a909e' : '#5e6573'; }
+function chartGridColor() { return document.body.classList.contains('light') ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.04)'; }
+
 function navChartOpts(yFmt) {
   return {
     responsive: true, maintainAspectRatio: false,
@@ -260,8 +273,8 @@ function navChartOpts(yFmt) {
       tooltip: { callbacks: { label: c => yFmt(c.parsed.y) } },
     },
     scales: {
-      x: { type: 'time', time: { tooltipFormat: 'PP HH:mm' }, ticks: { color: '#5e6573', maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,0.04)' } },
-      y: { ticks: { color: '#5e6573', callback: yFmt }, grid: { color: 'rgba(255,255,255,0.04)' } },
+      x: { type: 'time', time: { tooltipFormat: 'PP HH:mm' }, ticks: { color: chartTickColor(), maxTicksLimit: 8 }, grid: { color: chartGridColor() } },
+      y: { ticks: { color: chartTickColor(), callback: yFmt }, grid: { color: chartGridColor() } },
     },
   };
 }
@@ -275,10 +288,23 @@ function ddChartOpts(yFmt) {
       tooltip: { callbacks: { label: c => yFmt(c.parsed.y) } },
     },
     scales: {
-      x: { type: 'time', time: { tooltipFormat: 'PP HH:mm' }, ticks: { color: '#5e6573', maxTicksLimit: 5, display: false }, grid: { display: false } },
-      y: { ticks: { color: '#5e6573', callback: yFmt, maxTicksLimit: 4 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+      x: { type: 'time', time: { tooltipFormat: 'PP HH:mm' }, ticks: { color: chartTickColor(), maxTicksLimit: 5, display: false }, grid: { display: false } },
+      y: { ticks: { color: chartTickColor(), maxTicksLimit: 4 }, grid: { color: chartGridColor() } },
     },
   };
+}
+
+function updateChartTheme() {
+  const tc = chartTickColor();
+  const gc = chartGridColor();
+  for (const chart of [navChart, ddChart]) {
+    if (!chart) continue;
+    for (const scale of Object.values(chart.options.scales)) {
+      if (scale.ticks) scale.ticks.color = tc;
+      if (scale.grid && scale.grid.display !== false) scale.grid.color = gc;
+    }
+    chart.update('none');
+  }
 }
 
 function renderNavCurrent(values) {
