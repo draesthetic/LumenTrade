@@ -4,3 +4,5 @@ node_modules/
 .env
 tradebook-*.xlsx
 tradebook-*.csv
+landing/.next/
+landing/.next/cache/
