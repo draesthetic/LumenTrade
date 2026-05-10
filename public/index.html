@@ -11,9 +11,15 @@
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 </head>
 <body>
+  <div class="ambient" aria-hidden="true">
+    <span class="orb orb-1"></span>
+    <span class="orb orb-2"></span>
+    <span class="orb orb-3"></span>
+    <span class="orb orb-4"></span>
+  </div>
 
   <!-- ① Header -->
-  <header>
+  <header class="glass-nav reveal">
     <div class="header-row">
       <div>
         <h1>Trade Analytics</h1>
@@ -27,7 +33,7 @@
   </header>
 
   <!-- ① Upload card: drag-and-drop + capital presets + rich status -->
-  <section class="upload-card">
+  <section class="upload-card glass-panel reveal delay-1 parallax">
     <form id="upload-form">
       <div id="drop-zone" class="drop-zone">
         <input type="file" name="file" id="file" accept=".xlsx,.xls,.csv" required />
@@ -94,10 +100,10 @@
   </section>
 
   <!-- Results -->
-  <section id="results" hidden>
+  <section id="results" class="reveal delay-2" hidden>
 
     <!-- ② Hero KPI strip -->
-    <div class="hero-strip" id="hero-strip">
+    <div class="hero-strip glass-panel parallax" id="hero-strip">
       <div class="hero-kpi" id="hkpi-pnl">
         <div class="hkpi-label">Net P&amp;L</div>
         <div class="hkpi-value"></div>
@@ -132,9 +138,10 @@
     </div>
 
     <!-- ③ Charts: 3:1 NAV priority + PnL histogram -->
-    <div class="charts">
+    <div class="dashboard-frame reveal delay-3" id="dashboard-frame">
+      <div class="charts">
       <!-- NAV: dominant -->
-      <div class="chart-card chart-card--nav">
+      <div class="chart-card chart-card--nav glass-panel">
         <div class="chart-header">
           <div>
             <h2>Equity Curve</h2>
@@ -154,7 +161,7 @@
       <!-- Right column -->
       <div class="charts-right">
         <!-- Drawdown: red fade -->
-        <div class="chart-card chart-card--dd">
+        <div class="chart-card chart-card--dd glass-panel">
           <h2>Drawdown</h2>
           <div class="chart-wrap">
             <canvas id="dd-chart"></canvas>
@@ -163,21 +170,43 @@
         </div>
 
         <!-- ⑥ PnL distribution -->
-        <div class="chart-card chart-card--dist">
+        <div class="chart-card chart-card--dist glass-panel">
           <h2>P&amp;L per Trade</h2>
           <div id="pnl-dist"></div>
         </div>
       </div>
+      </div>
+
+      <!-- Extended Charts: Day of Week & Rolling Win Rate -->
+      <div class="extended-charts">
+      <div class="chart-card chart-card--dow glass-panel">
+        <h2>P&amp;L by Day of Week</h2>
+        <div class="chart-wrap">
+          <canvas id="dow-chart"></canvas>
+        </div>
+      </div>
+      <div class="chart-card chart-card--rolling glass-panel">
+        <h2>Rolling Win Rate (10 trades)</h2>
+        <div class="chart-wrap">
+          <canvas id="rolling-chart"></canvas>
+        </div>
+      </div>
+      <div class="chart-card chart-card--overnight glass-panel">
+        <h2>Overnight vs Day Trades</h2>
+        <div class="overnight-stats" id="overnight-stats"></div>
+      </div>
+      </div>
     </div>
 
     <!-- ④ Metrics: hero numbers + accent stripe + hierarchy -->
-    <div class="metrics" id="metrics"></div>
+    <div class="metrics reveal delay-5 parallax" id="metrics"></div>
 
     <!-- ⑤ Trades table: tabs + search + filter + sort arrows + expandable rows + by-symbol -->
-    <div class="trades-card">
+    <div class="trades-card glass-panel reveal delay-6">
       <div class="trades-tabbar">
         <button class="trades-tab active" data-tab="trades">Closed Trades</button>
         <button class="trades-tab" data-tab="symbols">By Symbol</button>
+        <button class="trades-tab" data-tab="extended">Extended</button>
         <div class="trades-controls" id="trades-controls">
           <div class="search-wrap">
             <span class="search-icon">⌕</span>
@@ -227,6 +256,20 @@
             </thead>
             <tbody id="symbols-tbody"></tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- Extended analytics tab -->
+      <div id="tab-extended" class="tab-panel" hidden>
+        <div class="extended-tab-content">
+          <div class="ext-section">
+            <h3>Symbol Breakdown</h3>
+            <div class="ext-symbols" id="ext-symbols"></div>
+          </div>
+          <div class="ext-section">
+            <h3>Day of Week Performance</h3>
+            <div class="ext-dow" id="ext-dow"></div>
+          </div>
         </div>
       </div>
     </div>

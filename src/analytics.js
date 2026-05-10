@@ -3,6 +3,12 @@ const PERIODS_PER_YEAR = 252;
 
 const sum = (arr) => arr.reduce((a, b) => a + b, 0);
 const mean = (arr) => (arr.length ? sum(arr) / arr.length : 0);
+const median = (arr) => {
+  if (!arr.length) return 0;
+  const sorted = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+};
 const std = (arr) => {
   if (arr.length < 2) return 0;
   const m = mean(arr);
@@ -13,6 +19,7 @@ const dateKey = (d) => {
   const dt = new Date(d);
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 };
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 function buildEquityCurve(trades, startingCapital) {
   const points = [{ t: trades.length ? trades[0].entryTime : new Date(), equity: startingCapital, label: 'Start' }];
@@ -24,10 +31,10 @@ function buildEquityCurve(trades, startingCapital) {
   for (const tr of trades) {
     equity += tr.pnl;
     points.push({ t: tr.exitTime, equity, label: `${tr.symbol} ${tr.side}` });
-    if (equity > peak) peak = equity;
     peaks.push(peak);
     drawdownAbs.push(equity - peak);
     drawdownPct.push(peak > 0 ? (equity - peak) / peak : 0);
+    if (equity > peak) peak = equity;
   }
   return { points, peaks, drawdownAbs, drawdownPct };
 }
@@ -90,6 +97,89 @@ function streaks(trades) {
   return { maxConsecWins: maxW, maxConsecLosses: maxL };
 }
 
+function tradeFrequency(trades) {
+  if (!trades.length) return { perDay: 0, perWeek: 0, perMonth: 0 };
+  const firstDate = new Date(trades[0].entryTime);
+  const lastDate = new Date(trades[trades.length - 1].exitTime);
+  const totalDays = Math.max((lastDate - firstDate) / (24 * 3600 * 1000), 1);
+  const totalWeeks = totalDays / 7;
+  const totalMonths = totalDays / 30.4375;
+  return {
+    perDay: trades.length / totalDays,
+    perWeek: trades.length / totalWeeks,
+    perMonth: trades.length / totalMonths,
+  };
+}
+
+function dayOfWeekAnalysis(trades) {
+  const byDay = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
+  for (const t of trades) {
+    const dow = new Date(t.entryTime).getDay();
+    byDay[dow].push(t.pnl);
+  }
+  return Object.entries(byDay).map(([dow, pnls]) => ({
+    day: DAY_NAMES[dow],
+    trades: pnls.length,
+    pnl: sum(pnls),
+    avgPnl: pnls.length ? mean(pnls) : 0,
+    winRate: pnls.length ? pnls.filter(p => p > 0).length / pnls.length : 0,
+  }));
+}
+
+function positionSizing(trades) {
+  if (!trades.length) return { avg: 0, median: 0, std: 0, min: 0, max: 0 };
+  const qtys = trades.map(t => t.qty);
+  return {
+    avg: mean(qtys),
+    median: median(qtys),
+    std: std(qtys),
+    min: Math.min(...qtys),
+    max: Math.max(...qtys),
+  };
+}
+
+function symbolBreakdown(trades) {
+  const bySymbol = {};
+  for (const t of trades) {
+    if (!bySymbol[t.symbol]) bySymbol[t.symbol] = { trades: 0, pnl: 0, wins: 0, losses: 0 };
+    bySymbol[t.symbol].trades++;
+    bySymbol[t.symbol].pnl += t.pnl;
+    if (t.pnl > 0) bySymbol[t.symbol].wins++;
+    else if (t.pnl < 0) bySymbol[t.symbol].losses++;
+  }
+  return Object.entries(bySymbol)
+    .map(([symbol, data]) => ({ symbol, ...data, winRate: data.trades ? data.wins / data.trades : 0 }))
+    .sort((a, b) => b.pnl - a.pnl);
+}
+
+function rollingWinRate(trades, windowSize = 10) {
+  if (trades.length < windowSize) return [];
+  const results = [];
+  for (let i = windowSize - 1; i < trades.length; i++) {
+    const window = trades.slice(i - windowSize + 1, i + 1);
+    const wins = window.filter(t => t.pnl > 0).length;
+    results.push({ index: i, winRate: wins / windowSize });
+  }
+  return results;
+}
+
+function overnightAnalysis(trades) {
+  const held = trades.filter(t => {
+    const entry = new Date(t.entryTime);
+    const exit = new Date(t.exitTime);
+    return entry.toDateString() !== exit.toDateString();
+  });
+  const dayTrades = trades.filter(t => !held.includes(t));
+  return {
+    overnightCount: held.length,
+    overnightPnL: sum(held.map(t => t.pnl)),
+    dayTradeCount: dayTrades.length,
+    dayTradePnL: sum(dayTrades.map(t => t.pnl)),
+    overnightWinRate: held.length ? held.filter(t => t.pnl > 0).length / held.length : 0,
+    dayTradeWinRate: dayTrades.length ? dayTrades.filter(t => t.pnl > 0).length / dayTrades.length : 0,
+  };
+}
+
 function analyze(trades, startingCapital) {
   const n = trades.length;
   const empty = !n;
@@ -130,6 +220,28 @@ function analyze(trades, startingCapital) {
   const annualizedSharpe = sharpe == null ? null : sharpe * Math.sqrt(PERIODS_PER_YEAR);
   const annualizedSortino = sortino == null ? null : sortino * Math.sqrt(PERIODS_PER_YEAR);
 
+  const freq = tradeFrequency(trades);
+  const dayOfWeek = dayOfWeekAnalysis(trades);
+  const sizing = positionSizing(trades);
+  const symbols = symbolBreakdown(trades);
+  const rollingWR = rollingWinRate(trades, 10);
+  const overnight = overnightAnalysis(trades);
+  const breakeven = trades.filter(t => t.pnl === 0).length;
+  const durations = trades.map(t => t.durationMs);
+  const recoveryFactor = maxDD !== 0 ? safeDiv(netProfit, Math.abs(maxDD)) : null;
+
+  const avgWinLoss = wins.length && losses.length ? mean(wins.map(t => t.pnl)) / Math.abs(mean(losses.map(t => t.pnl))) : null;
+  const avgWinRMultiple = avgWinLoss !== null && avgWinLoss > 0 ? avgWinLoss : null;
+
+  const avgDurationMs = n ? mean(durations) : 0;
+  const medianDurationMs = n ? median(durations) : 0;
+  const stdDurationMs = n > 1 ? std(durations) : 0;
+
+  const lastTradeDate = trades[n - 1]?.exitTime;
+  const totalTimeMs = firstDate && lastTradeDate ? lastTradeDate - firstDate : 0;
+  const totalPositionTimeMs = sum(durations);
+  const timeInMarketPct = totalTimeMs > 0 ? (totalPositionTimeMs / totalTimeMs) * 100 : 0;
+
   const metrics = {
     profitability: {
       netProfit,
@@ -142,7 +254,7 @@ function analyze(trades, startingCapital) {
       maxDrawdown: maxDD,
       maxDrawdownPct: maxDDPct,
       avgDrawdownPct: avgDDPct,
-      riskReward: losses.length === 0 ? null : (mean(wins.map((t) => t.pnl)) / Math.abs(mean(losses.map((t) => t.pnl)))),
+      riskReward: losses.length === 0 ? null : (wins.length === 0 ? null : mean(wins.map((t) => t.pnl)) / Math.abs(mean(losses.map((t) => t.pnl)))),
       ulcerIndex: ulcer,
     },
     performance: {
@@ -165,13 +277,28 @@ function analyze(trades, startingCapital) {
     },
     behavior: {
       totalTrades: n,
-      avgDurationMs: n ? mean(trades.map((t) => t.durationMs)) : 0,
+      avgDurationMs,
+      medianDurationMs,
+      stdDurationMs,
       longCount: longs.length,
       longPnL: sum(longs.map((t) => t.pnl)),
       shortCount: shorts.length,
       shortPnL: sum(shorts.map((t) => t.pnl)),
       maxConsecWins,
       maxConsecLosses,
+      tradeFrequency: freq,
+      timeInMarketPct,
+    },
+    extended: {
+      dayOfWeekPnL: dayOfWeek,
+      positionSizing: sizing,
+      symbolBreakdown: symbols,
+      rollingWinRate: rollingWR,
+      overnightVsDayTrades: overnight,
+      breakevenCount: breakeven,
+      profitPerTrade: empty ? 0 : netProfit / n,
+      recoveryFactor,
+      avgRiskRewardMultiple: avgWinRMultiple,
     },
   };
 

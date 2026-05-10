@@ -9,7 +9,7 @@
 })();
 
 /* ── Globals ─────────────────────────────────────────────────────────────── */
-let navChart, ddChart;
+let navChart, ddChart, dowChart, rollingChart;
 let allTrades      = [];
 let filteredTrades = [];
 let currentSort    = { key: 'exitTime', dir: 1 };
@@ -41,6 +41,41 @@ function fmtDate(d) {
 function fmtDateShort(d) {
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
+
+/* ── ⓪ Scroll reveal ───────────────────────────────────────────────────────── */
+const revealObserver = new IntersectionObserver(
+  (entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        revealObserver.unobserve(entry.target);
+      }
+    });
+  },
+  { threshold: 0.15 }
+);
+
+document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+
+/* ── Micro-motion: subtle parallax ────────────────────────────────────────── */
+const parallaxEls = document.querySelectorAll('.parallax');
+let ticking = false;
+
+function updateParallax() {
+  const y = window.scrollY || 0;
+  parallaxEls.forEach((el, idx) => {
+    const speed = 0.04 + idx * 0.01;
+    el.style.setProperty('--parallax-offset', `${y * speed}px`);
+  });
+  ticking = false;
+}
+
+window.addEventListener('scroll', () => {
+  if (!ticking) {
+    window.requestAnimationFrame(updateParallax);
+    ticking = true;
+  }
+});
 
 /* ── ① Drag-and-drop upload ─────────────────────────────────────────────── */
 const dropZone    = document.getElementById('drop-zone');
@@ -174,6 +209,7 @@ function render(data) {
   maxAbsPnl = Math.max(...allTrades.map(t => Math.abs(t.pnl)), 1);
   applyFilters();
   renderSymbolsTab(data.trades, data.metrics);
+  renderExtendedTab(data.metrics);
 }
 
 /* ── ② Hero KPI strip ────────────────────────────────────────────────────── */
@@ -200,6 +236,12 @@ function renderHeroStrip(data) {
 
 /* ── ③ Charts ────────────────────────────────────────────────────────────── */
 function renderCharts(data) {
+  const dashboard = document.getElementById('dashboard-frame');
+  if (dashboard) {
+    dashboard.classList.remove('chart-ready');
+    dashboard.classList.add('chart-loading');
+  }
+
   const navLabels = data.equityCurve.map(p => new Date(p.t));
   const navValues = data.equityCurve.map(p => p.equity);
   const ddValues  = data.drawdownCurve.map(p => p.drawdownPct * 100);
@@ -213,6 +255,18 @@ function renderCharts(data) {
   renderDdStats(data.metrics);
   renderPnlDist(data.trades);
   setupRangeButtons();
+
+  // Extended charts
+  buildDowChart(data.metrics);
+  buildRollingChart(data.metrics);
+  renderOvernightStats(data.metrics);
+
+  if (dashboard) {
+    setTimeout(() => {
+      dashboard.classList.remove('chart-loading');
+      dashboard.classList.add('chart-ready');
+    }, 450);
+  }
 }
 
 function buildNavChart(labels, values) {
@@ -224,14 +278,22 @@ function buildNavChart(labels, values) {
       datasets: [{
         label: 'NAV',
         data: values,
-        borderColor: 'oklch(67% 0.17 155)',
+        borderColor: 'rgba(200, 230, 52, 0.95)',
         backgroundColor: (ctx) => {
           const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, ctx.chart.height);
-          g.addColorStop(0,   'oklch(67% 0.17 155 / 0.30)');
-          g.addColorStop(1,   'oklch(67% 0.17 155 / 0.01)');
+          g.addColorStop(0,   'rgba(200, 230, 52, 0.28)');
+          g.addColorStop(0.6, 'rgba(140, 185, 255, 0.10)');
+          g.addColorStop(1,   'rgba(200, 230, 52, 0.00)');
           return g;
         },
-        fill: true, tension: 0.15, pointRadius: 0, borderWidth: 1.8,
+        fill: true,
+        tension: 0.25,
+        pointRadius: 0,
+        borderWidth: 2.2,
+        pointHoverRadius: 4,
+        pointHoverBorderWidth: 2,
+        pointHoverBackgroundColor: '#0b0c0f',
+        pointHoverBorderColor: 'rgba(200, 230, 52, 0.95)'
       }],
     },
     options: navChartOpts(v => '₹' + Math.round(v).toLocaleString('en-IN')),
@@ -247,14 +309,17 @@ function buildDdChart(labels, values) {
       datasets: [{
         label: 'Drawdown %',
         data: values,
-        borderColor: 'oklch(62% 0.20 18)',
+        borderColor: 'rgba(255, 107, 90, 0.9)',
         backgroundColor: (ctx) => {
           const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, ctx.chart.height);
-          g.addColorStop(0,   'oklch(62% 0.20 18 / 0.35)');
-          g.addColorStop(1,   'oklch(62% 0.20 18 / 0.02)');
+          g.addColorStop(0,   'rgba(255, 107, 90, 0.25)');
+          g.addColorStop(1,   'rgba(255, 107, 90, 0.02)');
           return g;
         },
-        fill: true, tension: 0.1, pointRadius: 0, borderWidth: 1.6,
+        fill: true,
+        tension: 0.2,
+        pointRadius: 0,
+        borderWidth: 2,
       }],
     },
     options: ddChartOpts(v => v.toFixed(1) + '%'),
@@ -297,7 +362,7 @@ function ddChartOpts(yFmt) {
 function updateChartTheme() {
   const tc = chartTickColor();
   const gc = chartGridColor();
-  for (const chart of [navChart, ddChart]) {
+  for (const chart of [navChart, ddChart, dowChart, rollingChart]) {
     if (!chart) continue;
     for (const scale of Object.values(chart.options.scales)) {
       if (scale.ticks) scale.ticks.color = tc;
@@ -322,6 +387,90 @@ function renderDdStats(metrics) {
     <div class="dd-stat-item">Max <span>${pct(metrics.risk.maxDrawdownPct, 1)}</span></div>
     <div class="dd-stat-item">Avg <span>${pct(metrics.risk.avgDrawdownPct, 1)}</span></div>
     <div class="dd-stat-item">Ulcer <span style="color:var(--dim)">${num(metrics.risk.ulcerIndex)}</span></div>
+  `;
+}
+
+function buildDowChart(metrics) {
+  const dowData = metrics.extended?.dayOfWeekPnL || [];
+  if (dowChart) dowChart.destroy();
+
+  const labels = dowData.map(d => d.day);
+  const pnlData = dowData.map(d => d.pnl);
+  const colors = pnlData.map(v => v >= 0 ? 'rgba(200, 230, 52, 0.85)' : 'rgba(255, 107, 90, 0.85)');
+
+  dowChart = new Chart(document.getElementById('dow-chart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'P&L',
+        data: pnlData,
+        backgroundColor: colors,
+        borderRadius: 10,
+        borderSkipped: false,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: chartTickColor() } },
+        y: { grid: { color: chartGridColor() }, ticks: { color: chartTickColor(), callback: v => '₹' + (v/1000).toFixed(0) + 'k' } },
+      },
+    },
+  });
+}
+
+function buildRollingChart(metrics) {
+  const rollingData = metrics.extended?.rollingWinRate || [];
+  if (rollingChart) rollingChart.destroy();
+
+  rollingChart = new Chart(document.getElementById('rolling-chart'), {
+    type: 'line',
+    data: {
+      labels: rollingData.map(r => r.index),
+      datasets: [{
+        label: 'Win Rate',
+        data: rollingData.map(r => r.winRate * 100),
+        borderColor: 'rgba(200, 230, 52, 0.95)',
+        backgroundColor: 'rgba(200, 230, 52, 0.12)',
+        fill: true,
+        tension: 0.35,
+        pointRadius: 0,
+        borderWidth: 2,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: chartTickColor(), display: false } },
+        y: { min: 0, max: 100, grid: { color: chartGridColor() }, ticks: { color: chartTickColor(), callback: v => v + '%' } },
+      },
+    },
+  });
+}
+
+function renderOvernightStats(metrics) {
+  const o = metrics.extended?.overnightVsDayTrades || {};
+  const el = document.getElementById('overnight-stats');
+  el.innerHTML = `
+    <div class="overnight-row">
+      <div class="overnight-col">
+        <div class="ov-label">Overnight</div>
+        <div class="ov-count">${o.overnightCount || 0}</div>
+        <div class="ov-pnl ${o.overnightPnL >= 0 ? 'pos' : 'neg'}">${money(o.overnightPnL || 0)}</div>
+        <div class="ov-wr">WR: ${pct(o.overnightWinRate, 0)}</div>
+      </div>
+      <div class="overnight-col">
+        <div class="ov-label">Day Trades</div>
+        <div class="ov-count">${o.dayTradeCount || 0}</div>
+        <div class="ov-pnl ${o.dayTradePnL >= 0 ? 'pos' : 'neg'}">${money(o.dayTradePnL || 0)}</div>
+        <div class="ov-wr">WR: ${pct(o.dayTradeWinRate, 0)}</div>
+      </div>
+    </div>
   `;
 }
 
@@ -390,6 +539,9 @@ function applyRange(range) {
 function renderMetrics(m, trades) {
   const el = document.getElementById('metrics');
 
+  const freq = m.behavior.tradeFrequency || {};
+  const sizing = m.extended.positionSizing || {};
+
   const groups = [
     {
       title: 'Profitability', accentColor: 'var(--green)',
@@ -409,6 +561,7 @@ function renderMetrics(m, trades) {
         ['Avg DD %',     pct(m.risk.avgDrawdownPct, 1),    'neg'],
         ['Risk:Reward',  ratio(m.risk.riskReward),         ''  ],
         ['Ulcer Index',  num(m.risk.ulcerIndex),           ''  ],
+        ['Recovery',     ratio(m.extended.recoveryFactor), ''  ],
       ],
     },
     {
@@ -420,6 +573,7 @@ function renderMetrics(m, trades) {
         ['Avg Loss',     money(m.performance.avgLoss),      'neg'],
         ['Largest Win',  money(m.performance.largestWin),   'pos'],
         ['Largest Loss', money(m.performance.largestLoss),  'neg'],
+        ['Breakeven',    m.extended.breakevenCount || 0,     ''  ],
       ],
     },
     {
@@ -430,6 +584,7 @@ function renderMetrics(m, trades) {
         ['Calmar',        ratio(m.efficiency.calmar),       ''],
         ['Ann. Return',   pct(m.efficiency.annualizedReturn),m.efficiency.annualizedReturn >= 0 ? 'pos' : 'neg'],
         ['Total Return',  pct(m.efficiency.totalReturnPct), m.efficiency.totalReturnPct >= 0 ? 'pos' : 'neg'],
+        ['Profit/Trade',  money(m.extended.profitPerTrade), m.extended.profitPerTrade >= 0 ? 'pos' : 'neg'],
       ],
     },
     {
@@ -440,6 +595,20 @@ function renderMetrics(m, trades) {
         ['Short P&L',     `${m.behavior.shortCount}  ·  ${money(m.behavior.shortPnL)}`, m.behavior.shortPnL >= 0 ? 'pos' : 'neg'],
         ['Max C. Wins',   m.behavior.maxConsecWins,   'pos'],
         ['Max C. Losses', m.behavior.maxConsecLosses, 'neg'],
+        ['Med Duration',  fmtDuration(m.behavior.medianDurationMs), ''],
+        ['Std Duration',  fmtDuration(m.behavior.stdDurationMs), ''],
+      ],
+    },
+    {
+      title: 'Frequency & Sizing', accentColor: 'oklch(74% 0.15 220)',
+      hero: { label: 'Per Day', val: num(freq.perDay, 1), cls: '' },
+      rows: [
+        ['Per Week',    num(freq.perWeek, 1),  ''],
+        ['Per Month',   num(freq.perMonth, 1), ''],
+        ['Time in Mkt', pct(m.behavior.timeInMarketPct, 0), ''],
+        ['Avg Qty',     num(sizing.avg, 1), ''],
+        ['Med Qty',     num(sizing.median, 1), ''],
+        ['R-Multiple',  num(m.extended.avgRiskRewardMultiple, 2), ''],
       ],
     },
   ];
@@ -531,7 +700,7 @@ function renderTradeRows() {
     const notional = money(t.entryPrice * t.qty);
 
     return `
-      <tr class="trade-row" data-idx="${i}">
+      <tr class="trade-row ${pos ? 'row-pos' : 'row-neg'}" data-idx="${i}">
         <td>${t.symbol}</td>
         <td><span class="side-badge ${t.side}">${sideLbl}</span></td>
         <td>${t.qty}</td>
@@ -618,6 +787,44 @@ function renderSymbolsTab(trades, metrics) {
   }).join('');
 }
 
+/* ── Extended tab rendering ───────────────────────────────────────────────── */
+function renderExtendedTab(metrics) {
+  // Symbol breakdown
+  const symbols = metrics.extended?.symbolBreakdown || [];
+  const maxAbs = Math.max(...symbols.map(s => Math.abs(s.pnl)), 1);
+  const netProfit = Math.abs(metrics.profitability.netProfit) || 1;
+
+  document.getElementById('ext-symbols').innerHTML = symbols.slice(0, 15).map(s => {
+    const pos = s.pnl >= 0;
+    const barW = Math.abs(s.pnl) / maxAbs * 100;
+    const contrib = (Math.abs(s.pnl) / netProfit * 100).toFixed(0);
+    return `
+      <div class="ext-sym-row">
+        <span class="ext-sym-name">${s.symbol}</span>
+        <div class="ext-sym-bar-wrap">
+          <div class="ext-sym-bar" style="width:${barW}%;background:${pos ? 'var(--green)' : 'var(--red)'}"></div>
+        </div>
+        <span class="ext-sym-pnl ${pos ? 'pos' : 'neg'}">${money(s.pnl)}</span>
+        <span class="ext-sym-wr">${pct(s.winRate, 0)}</span>
+        <span class="ext-sym-contrib">${contrib}%</span>
+      </div>`;
+  }).join('');
+
+  // Day of week
+  const dow = metrics.extended?.dayOfWeekPnL || [];
+  document.getElementById('ext-dow').innerHTML = dow.map(d => {
+    const pos = d.pnl >= 0;
+    return `
+      <div class="ext-dow-row">
+        <span class="ext-dow-day">${d.day}</span>
+        <span class="ext-dow-trades">${d.trades} trades</span>
+        <span class="ext-dow-pnl ${pos ? 'pos' : 'neg'}">${money(d.pnl)}</span>
+        <span class="ext-dow-avg">${money(d.avgPnl)}/trade</span>
+        <span class="ext-dow-wr">${pct(d.winRate, 0)}</span>
+      </div>`;
+  }).join('');
+}
+
 /* ── Tab switching ───────────────────────────────────────────────────────── */
 document.querySelectorAll('.trades-tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -626,6 +833,7 @@ document.querySelectorAll('.trades-tab').forEach(tab => {
     const which = tab.dataset.tab;
     document.getElementById('tab-trades').hidden   = (which !== 'trades');
     document.getElementById('tab-symbols').hidden  = (which !== 'symbols');
+    document.getElementById('tab-extended').hidden = (which !== 'extended');
     document.getElementById('trades-controls').style.visibility = which === 'trades' ? 'visible' : 'hidden';
   });
 });

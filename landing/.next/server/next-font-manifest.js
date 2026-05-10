@@ -1,0 +1,1 @@
+self.__NEXT_FONT_MANIFEST='{"pages":{},"app":{"/Users/draesthetic/Downloads/CLAUDE/Code/chase-trade_analysis/landing/app/layout":["static/media/13971731025ec697-s.p.woff2"]},"appUsingSizeAdjust":true,"pagesUsingSizeAdjust":false}';
