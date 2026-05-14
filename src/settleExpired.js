@@ -8,67 +8,87 @@
 
 function settleExpiredPositions(expiredPositions, closedTrades, fills, pnlEntries) {
   const pnlMap = new Map(pnlEntries.map(e => [e.symbol.toUpperCase(), e]));
+  const fillTotals = new Map();
+  for (const f of fills) {
+    const sym = String(f.symbol || '').toUpperCase();
+    if (!sym) continue;
+    const totals = fillTotals.get(sym) || { buyValue: 0, sellValue: 0 };
+    const value = f.price * f.qty;
+    if (f.side === 'buy') totals.buyValue += value;
+    else totals.sellValue += value;
+    fillTotals.set(sym, totals);
+  }
+
+  const expiredBySymbol = new Map();
+  for (const pos of expiredPositions) {
+    const sym = String(pos.symbol || '').toUpperCase();
+    if (!sym) continue;
+    if (!expiredBySymbol.has(sym)) {
+      expiredBySymbol.set(sym, { positions: [], longQty: 0, shortQty: 0 });
+    }
+    const group = expiredBySymbol.get(sym);
+    group.positions.push(pos);
+    if (pos.side === 'short') group.shortQty += pos.qty;
+    else group.longQty += pos.qty;
+  }
+
   const settled = [];
   const unresolved = [];
 
-  for (const pos of expiredPositions) {
-    const sym = pos.symbol.toUpperCase();
+  for (const [sym, group] of expiredBySymbol.entries()) {
     const pnl = pnlMap.get(sym);
     if (!pnl) {
-      unresolved.push(pos);
+      unresolved.push(...group.positions);
       continue;
     }
 
-    // Sum buy-side and sell-side fill values for this symbol from the tradebook.
-    const symFills = fills.filter(f => f.symbol.toUpperCase() === sym);
-    let fillBuyValue  = 0;
-    let fillSellValue = 0;
-    for (const f of symFills) {
-      if (f.side === 'buy')  fillBuyValue  += f.price * f.qty;
-      else                   fillSellValue += f.price * f.qty;
-    }
+    const totals = fillTotals.get(sym) || { buyValue: 0, sellValue: 0 };
+    const settleBuyValue  = pnl.buyValue  - totals.buyValue;
+    const settleSellValue = pnl.sellValue - totals.sellValue;
 
-    // Settlement value = P&L file total − tradebook fills
-    const settleBuyValue  = pnl.buyValue  - fillBuyValue;
-    const settleSellValue = pnl.sellValue - fillSellValue;
+    const shortPrice = group.shortQty > 0 ? settleBuyValue / group.shortQty : null;
+    const longPrice  = group.longQty > 0 ? settleSellValue / group.longQty : null;
 
-    let settlementPrice;
-    let settlementPnl;
-
-    if (pos.side === 'short') {
-      // Short was opened with a sell fill (already in tradebook).
-      // Settlement closes it with a buy at the exchange settlement price.
-      if (pos.qty <= 0 || settleBuyValue <= 0) {
+    for (const pos of group.positions) {
+      if (pos.qty <= 0) {
         unresolved.push(pos);
         continue;
       }
-      settlementPrice = settleBuyValue / pos.qty;
-      settlementPnl   = (pos.price - settlementPrice) * pos.qty;
-    } else {
-      // Long was opened with a buy fill (already in tradebook).
-      // Settlement closes it with a sell at the exchange settlement price.
-      if (pos.qty <= 0 || settleSellValue <= 0) {
-        unresolved.push(pos);
-        continue;
+
+      let settlementPrice;
+      let settlementPnl;
+
+      if (pos.side === 'short') {
+        if (settleBuyValue < 0 || !Number.isFinite(shortPrice)) {
+          unresolved.push(pos);
+          continue;
+        }
+        settlementPrice = shortPrice;
+        settlementPnl   = (pos.price - settlementPrice) * pos.qty;
+      } else {
+        if (settleSellValue < 0 || !Number.isFinite(longPrice)) {
+          unresolved.push(pos);
+          continue;
+        }
+        settlementPrice = longPrice;
+        settlementPnl   = (settlementPrice - pos.price) * pos.qty;
       }
-      settlementPrice = settleSellValue / pos.qty;
-      settlementPnl   = (settlementPrice - pos.price) * pos.qty;
+
+      const expiry = pos.expiredAt ? new Date(pos.expiredAt) : new Date(pos.execTime);
+
+      settled.push({
+        symbol:      pos.symbol,
+        side:        pos.side,
+        qty:         pos.qty,
+        entryPrice:  pos.price,
+        exitPrice:   Math.round(settlementPrice * 100) / 100,
+        entryTime:   pos.execTime,
+        exitTime:    expiry,
+        pnl:         settlementPnl,
+        durationMs:  expiry - new Date(pos.execTime),
+        isSettlement: true,
+      });
     }
-
-    const expiry = pos.expiredAt ? new Date(pos.expiredAt) : new Date(pos.execTime);
-
-    settled.push({
-      symbol:      pos.symbol,
-      side:        pos.side,
-      qty:         pos.qty,
-      entryPrice:  pos.price,
-      exitPrice:   Math.round(settlementPrice * 100) / 100,
-      entryTime:   pos.execTime,
-      exitTime:    expiry,
-      pnl:         settlementPnl,
-      durationMs:  expiry - new Date(pos.execTime),
-      isSettlement: true,
-    });
   }
 
   return { settled, unresolved };

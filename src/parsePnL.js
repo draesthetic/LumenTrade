@@ -6,7 +6,7 @@ const XLSX = require('xlsx');
 function parsePnL(buffer) {
   const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const sheet = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: null });
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null });
 
   let headerIdx = -1;
   for (let i = 0; i < rows.length; i++) {
@@ -40,18 +40,28 @@ function parsePnL(buffer) {
     throw new Error('P&L file is missing required columns (Symbol, Buy Value, Sell Value).');
   }
 
+  const toNumber = (value) => {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') {
+      const cleaned = value.replace(/,/g, '');
+      const num = Number(cleaned);
+      return Number.isFinite(num) ? num : 0;
+    }
+    return 0;
+  };
+
   const entries = [];
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const r = rows[i];
     if (!r) continue;
     const symbol = String(r[idx.symbol] || '').trim();
     if (!symbol) continue;
-    const buyValue    = parseFloat(String(r[idx.buyValue]  || '').replace(/,/g, '')) || 0;
-    const sellValue   = parseFloat(String(r[idx.sellValue] || '').replace(/,/g, '')) || 0;
-    const realizedPnl = idx.realizedPnl >= 0 ? parseFloat(String(r[idx.realizedPnl] || '').replace(/,/g, '')) || 0 : sellValue - buyValue;
-    const openQty     = idx.openQty   >= 0 ? parseFloat(String(r[idx.openQty]   || '').replace(/,/g, '')) || 0 : 0;
+    const buyValue    = toNumber(r[idx.buyValue]);
+    const sellValue   = toNumber(r[idx.sellValue]);
+    const realizedPnl = idx.realizedPnl >= 0 ? toNumber(r[idx.realizedPnl]) : sellValue - buyValue;
+    const openQty     = idx.openQty   >= 0 ? toNumber(r[idx.openQty]) : 0;
     const openType    = idx.openType  >= 0 ? String(r[idx.openType] || '').trim().toLowerCase() : '';
-    const openValue   = idx.openValue >= 0 ? parseFloat(String(r[idx.openValue] || '').replace(/,/g, '')) || 0 : 0;
+    const openValue   = idx.openValue >= 0 ? toNumber(r[idx.openValue]) : 0;
     entries.push({ symbol, buyValue, sellValue, realizedPnl, openQty, openType, openValue });
   }
 

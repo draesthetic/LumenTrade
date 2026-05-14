@@ -61,7 +61,7 @@ function parseTradebook(buffer) {
     if (sideRaw !== 'buy' && sideRaw !== 'sell') continue;
     const qty = Number(r[idx.qty]);
     const price = Number(r[idx.price]);
-    if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price)) continue;
+    if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price <= 0) continue;
     const execTime = parseExecTime(r[idx.execTime], r[idx.tradeDate]);
     if (!execTime) continue;
     fills.push({

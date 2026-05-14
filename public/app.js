@@ -18,6 +18,7 @@ let currentSearch  = '';
 let expandedRow    = null;
 let fullNavData    = null; // { labels, values } for range slicing
 let maxAbsPnl      = 0;
+let isSyncingScroll = false;
 
 /* ── Formatters ──────────────────────────────────────────────────────────── */
 const inr     = v => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v);
@@ -206,7 +207,7 @@ function render(data) {
   renderCharts(data);
   renderMetrics(data.metrics, data.trades);
   allTrades = data.trades.slice();
-  maxAbsPnl = Math.max(...allTrades.map(t => Math.abs(t.pnl)), 1);
+  maxAbsPnl = allTrades.reduce((acc, t) => Math.max(acc, Math.abs(t.pnl)), 1);
   applyFilters();
   renderSymbolsTab(data.trades, data.metrics);
   renderExtendedTab(data.metrics);
@@ -228,7 +229,7 @@ function renderHeroStrip(data) {
 
   setKpi('hkpi-pnl',    money(m.profitability.netProfit),   `vs ${money(startCap)} starting`, m.profitability.netProfit >= 0 ? 'green' : 'red');
   setKpi('hkpi-return', pct(retPct),                        `ann. ${pct(m.efficiency.annualizedReturn)}`,  retPct >= 0 ? 'green' : 'red');
-  setKpi('hkpi-winrate',pct(m.performance.winRate, 0),      `${data.trades.filter(t=>t.pnl>0).length} wins · ${data.trades.filter(t=>t.pnl<=0).length} losses`, 'green');
+  setKpi('hkpi-winrate',pct(m.performance.winRate, 0),      `${data.trades.filter(t=>t.pnl>0).length} wins · ${data.trades.filter(t=>t.pnl<0).length} losses`, 'green');
   setKpi('hkpi-sharpe', ratio(m.efficiency.sharpe),         `Sortino ${ratio(m.efficiency.sortino)}`, '');
   setKpi('hkpi-dd',     pct(m.risk.maxDrawdownPct, 1),      money(m.risk.maxDrawdown), 'red');
   setKpi('hkpi-open',   String(data.openPositions.length),  'positions still open', data.openPositions.length ? 'amber' : '');
@@ -249,6 +250,13 @@ function renderCharts(data) {
   // Store full data for range filtering
   fullNavData = { labels: navLabels, values: navValues, ddValues };
 
+  const navPxPerPoint = navLabels.length > 600 ? 2.4 : 1.4;
+  const navMinWidth = Math.max(navLabels.length * navPxPerPoint, getChartViewportWidth('nav-scroll'));
+  setChartInnerWidth('nav-scroll-inner', navMinWidth);
+  setChartInnerWidth('dd-scroll-inner', navMinWidth);
+  setChartInnerWidth('pnl-scroll-inner', Math.max(navLabels.length * 1.6, getChartViewportWidth('pnl-scroll')));
+  setChartInnerWidth('dow-scroll-inner', getChartViewportWidth('dow-scroll'));
+
   buildNavChart(navLabels, navValues);
   buildDdChart(navLabels, ddValues);
   renderNavCurrent(navValues);
@@ -258,8 +266,11 @@ function renderCharts(data) {
 
   // Extended charts
   buildDowChart(data.metrics);
-  buildRollingChart(data.metrics);
+  buildRollingChart(data.metrics, data.trades);
   renderOvernightStats(data.metrics);
+
+  syncChartScroll();
+  bindWheelScroll();
 
   if (dashboard) {
     setTimeout(() => {
@@ -267,6 +278,45 @@ function renderCharts(data) {
       dashboard.classList.add('chart-ready');
     }, 450);
   }
+}
+
+
+function getChartViewportWidth(id) {
+  const el = document.getElementById(id);
+  return el ? el.clientWidth : 0;
+}
+
+function setChartInnerWidth(id, width) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const w = Math.max(0, Math.floor(width));
+  el.style.width = `${w}px`;
+}
+
+function syncChartScroll() {
+  const scrollers = Array.from(document.querySelectorAll('.chart-scroll[data-sync="charts"]'));
+  scrollers.forEach((scroller) => {
+    scroller.addEventListener('scroll', () => {
+      if (isSyncingScroll) return;
+      isSyncingScroll = true;
+      const left = scroller.scrollLeft;
+      scrollers.forEach((el) => {
+        if (el !== scroller) el.scrollLeft = left;
+      });
+      requestAnimationFrame(() => { isSyncingScroll = false; });
+    });
+  });
+}
+
+function bindWheelScroll() {
+  const scrollers = Array.from(document.querySelectorAll('.chart-scroll[data-sync="charts"]'));
+  scrollers.forEach((scroller) => {
+    scroller.addEventListener('wheel', (e) => {
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      scroller.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }, { passive: false });
+  });
 }
 
 function buildNavChart(labels, values) {
@@ -422,32 +472,60 @@ function buildDowChart(metrics) {
   });
 }
 
-function buildRollingChart(metrics) {
-  const rollingData = metrics.extended?.rollingWinRate || [];
+function buildRollingChart(metrics, trades) {
+  const rolling20 = metrics.extended?.rollingExpectancy20 || [];
+  const rolling50 = metrics.extended?.rollingExpectancy50 || [];
+  const tradeMap = new Map();
+  trades.forEach((t, idx) => {
+    tradeMap.set(idx, t);
+  });
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - 1);
+
+  const filterByYear = (series) => series.filter(p => {
+    const tr = tradeMap.get(p.index);
+    if (!tr) return false;
+    return new Date(tr.exitTime) >= cutoff;
+  });
+
+  const filtered20 = filterByYear(rolling20);
+  const filtered50 = filterByYear(rolling50);
   if (rollingChart) rollingChart.destroy();
 
   rollingChart = new Chart(document.getElementById('rolling-chart'), {
     type: 'line',
     data: {
-      labels: rollingData.map(r => r.index),
-      datasets: [{
-        label: 'Win Rate',
-        data: rollingData.map(r => r.winRate * 100),
-        borderColor: 'rgba(200, 230, 52, 0.95)',
-        backgroundColor: 'rgba(200, 230, 52, 0.12)',
-        fill: true,
-        tension: 0.35,
-        pointRadius: 0,
-        borderWidth: 2,
-      }],
+      labels: filtered20.length ? filtered20.map(r => r.index) : filtered50.map(r => r.index),
+      datasets: [
+        {
+          label: 'Expectancy (20)',
+          data: filtered20.map(r => r.expectancy),
+          borderColor: 'rgba(200, 230, 52, 0.95)',
+          backgroundColor: 'rgba(200, 230, 52, 0.12)',
+          fill: false,
+          tension: 0.35,
+          pointRadius: 0,
+          borderWidth: 2,
+        },
+        {
+          label: 'Expectancy (50)',
+          data: filtered50.map(r => r.expectancy),
+          borderColor: 'rgba(140, 185, 255, 0.9)',
+          backgroundColor: 'rgba(140, 185, 255, 0.12)',
+          fill: false,
+          tension: 0.35,
+          pointRadius: 0,
+          borderWidth: 2,
+        }
+      ],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
+      plugins: { legend: { display: true, labels: { color: chartTickColor(), boxWidth: 10, boxHeight: 10 } } },
       scales: {
         x: { grid: { display: false }, ticks: { color: chartTickColor(), display: false } },
-        y: { min: 0, max: 100, grid: { color: chartGridColor() }, ticks: { color: chartTickColor(), callback: v => v + '%' } },
+        y: { grid: { color: chartGridColor() }, ticks: { color: chartTickColor(), callback: v => '₹' + Math.round(v).toLocaleString('en-IN') } },
       },
     },
   });
@@ -478,14 +556,16 @@ function renderOvernightStats(metrics) {
 function renderPnlDist(trades) {
   const container = document.getElementById('pnl-dist');
   if (!trades.length) { container.innerHTML = ''; return; }
-  const maxAbs = Math.max(...trades.map(t => Math.abs(t.pnl)), 1);
+  const maxAbs = trades.reduce((acc, t) => Math.max(acc, Math.abs(t.pnl)), 1);
   const minPnl = Math.min(...trades.map(t => t.pnl));
   const maxPnl = Math.max(...trades.map(t => t.pnl));
+
+  const barWidth = Math.max(3, Math.min(6, Math.floor(1200 / trades.length)));
 
   const bars = trades.map(t => {
     const h = Math.max(4, Math.abs(t.pnl) / maxAbs * 64);
     const cls = t.pnl >= 0 ? 'pos' : 'neg';
-    return `<div class="pnl-bar ${cls}" style="height:${h}px" title="${t.symbol}: ${money(t.pnl)}"></div>`;
+    return `<div class="pnl-bar ${cls}" style="height:${h}px;width:${barWidth}px" title="${t.symbol}: ${money(t.pnl)}"></div>`;
   }).join('');
 
   container.innerHTML = `
@@ -525,6 +605,11 @@ function applyRange(range) {
     slicedValues = values.slice(start);
     slicedDd     = ddValues.slice(start);
   }
+
+  const navPxPerPoint = slicedLabels.length > 600 ? 2.4 : 1.4;
+  const navMinWidth = Math.max(slicedLabels.length * navPxPerPoint, getChartViewportWidth('nav-scroll'));
+  setChartInnerWidth('nav-scroll-inner', navMinWidth);
+  setChartInnerWidth('dd-scroll-inner', navMinWidth);
 
   navChart.data.labels   = slicedLabels;
   navChart.data.datasets[0].data = slicedValues;

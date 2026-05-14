@@ -21,6 +21,19 @@ const dateKey = (d) => {
 };
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+// Helper to add days to a date
+function addDays(date, days) {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
+// Helper to check if a date is a weekday (Mon-Fri)
+function isWeekday(date) {
+  const day = date.getDay();
+  return day >= 1 && day <= 5;
+}
+
 function buildEquityCurve(trades, startingCapital) {
   const points = [{ t: trades.length ? trades[0].entryTime : new Date(), equity: startingCapital, label: 'Start' }];
   let equity = startingCapital;
@@ -41,19 +54,32 @@ function buildEquityCurve(trades, startingCapital) {
 
 function dailyReturns(trades, startingCapital) {
   if (!trades.length) return [];
-  const byDay = new Map();
+  // Find min and max exit dates
+  const exitDates = trades.map(t => new Date(t.exitTime));
+  const minDate = new Date(Math.min(...exitDates.map(d => d.getTime())));
+  const maxDate = new Date(Math.max(...exitDates.map(d => d.getTime())));
+  
+  // Build a map of date -> total P&L for that date (from trades)
+  const pnlByDate = new Map();
   for (const t of trades) {
     const k = dateKey(t.exitTime);
-    byDay.set(k, (byDay.get(k) || 0) + t.pnl);
+    pnlByDate.set(k, (pnlByDate.get(k) || 0) + t.pnl);
   }
-  const days = [...byDay.keys()].sort();
+  
   const out = [];
   let equity = startingCapital;
-  for (const d of days) {
-    const pnl = byDay.get(d);
-    const r = equity > 0 ? pnl / equity : 0;
-    out.push(r);
-    equity += pnl;
+  let current = new Date(minDate);
+  while (current <= maxDate) {
+    // Skip weekends
+    if (isWeekday(current)) {
+      const k = dateKey(current);
+      const pnl = pnlByDate.get(k) || 0;
+      const r = equity > 0 ? pnl / equity : 0;
+      out.push(r);
+      equity += pnl;
+    }
+    // Move to next day
+    current.setDate(current.getDate() + 1);
   }
   return out;
 }
@@ -152,13 +178,12 @@ function symbolBreakdown(trades) {
     .sort((a, b) => b.pnl - a.pnl);
 }
 
-function rollingWinRate(trades, windowSize = 10) {
+function rollingExpectancy(trades, windowSize = 20) {
   if (trades.length < windowSize) return [];
   const results = [];
   for (let i = windowSize - 1; i < trades.length; i++) {
     const window = trades.slice(i - windowSize + 1, i + 1);
-    const wins = window.filter(t => t.pnl > 0).length;
-    results.push({ index: i, winRate: wins / windowSize });
+    results.push({ index: i, expectancy: mean(window.map(t => t.pnl)) });
   }
   return results;
 }
@@ -197,13 +222,22 @@ function analyze(trades, startingCapital) {
   const avgDDPct = ddEpisodes.length ? mean(ddEpisodes) : 0;
   const ulcer = empty ? 0 : Math.sqrt(mean(equity.drawdownPct.map((d) => d * d))) * 100;
 
+  // --- Changes for issue 8: daily returns now include weekdays with zero returns for no-exit days
   const dr = dailyReturns(trades, startingCapital);
   const drMean = mean(dr);
   const drStd = std(dr);
-  const downside = dr.filter((r) => r < 0);
-  const drDownStd = std(downside);
-  const sharpe = safeDiv((drMean - RISK_FREE_RATE / PERIODS_PER_YEAR), drStd);
-  const sortino = safeDiv((drMean - RISK_FREE_RATE / PERIODS_PER_YEAR), drDownStd);
+  
+  // --- Changes for issue 7: Sortino denominator now uses standard downside deviation (population)
+  const targetPerPeriod = RISK_FREE_RATE / PERIODS_PER_YEAR;
+  const downsideSquared = dr.map(r => {
+    const excess = r - targetPerPeriod;
+    return excess < 0 ? excess * excess : 0;
+  });
+  const downsideVariance = sum(downsideSquared) / dr.length; // population variance
+  const drDownStd = Math.sqrt(downsideVariance);
+  
+  const sharpe = safeDiv((drMean - targetPerPeriod), drStd);
+  const sortino = safeDiv((drMean - targetPerPeriod), drDownStd);
 
   const lastEquity = equity.points[equity.points.length - 1]?.equity ?? startingCapital;
   const totalReturnPct = startingCapital > 0 ? (lastEquity - startingCapital) / startingCapital : 0;
@@ -217,6 +251,7 @@ function analyze(trades, startingCapital) {
   const shorts = trades.filter((t) => t.side === 'short');
   const { maxConsecWins, maxConsecLosses } = streaks(trades);
 
+  // Annualize Sharpe and Sortino using the square root of periods per year (252)
   const annualizedSharpe = sharpe == null ? null : sharpe * Math.sqrt(PERIODS_PER_YEAR);
   const annualizedSortino = sortino == null ? null : sortino * Math.sqrt(PERIODS_PER_YEAR);
 
@@ -224,7 +259,8 @@ function analyze(trades, startingCapital) {
   const dayOfWeek = dayOfWeekAnalysis(trades);
   const sizing = positionSizing(trades);
   const symbols = symbolBreakdown(trades);
-  const rollingWR = rollingWinRate(trades, 10);
+  const rollingExpectancy20 = rollingExpectancy(trades, 20);
+  const rollingExpectancy50 = rollingExpectancy(trades, 50);
   const overnight = overnightAnalysis(trades);
   const breakeven = trades.filter(t => t.pnl === 0).length;
   const durations = trades.map(t => t.durationMs);
@@ -293,7 +329,8 @@ function analyze(trades, startingCapital) {
       dayOfWeekPnL: dayOfWeek,
       positionSizing: sizing,
       symbolBreakdown: symbols,
-      rollingWinRate: rollingWR,
+      rollingExpectancy20,
+      rollingExpectancy50,
       overnightVsDayTrades: overnight,
       breakevenCount: breakeven,
       profitPerTrade: empty ? 0 : netProfit / n,
@@ -303,6 +340,7 @@ function analyze(trades, startingCapital) {
   };
 
   return {
+    metrics,
     metrics,
     equityCurve: equity.points.map((p) => ({ t: p.t, equity: p.equity, label: p.label })),
     drawdownCurve: equity.points.map((p, i) => ({
