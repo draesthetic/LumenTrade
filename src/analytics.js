@@ -1,4 +1,4 @@
-const RISK_FREE_RATE = 0.065;
+const DEFAULT_RISK_FREE_RATE = 0.065;
 const PERIODS_PER_YEAR = 252;
 
 const sum = (arr) => arr.reduce((a, b) => a + b, 0);
@@ -43,11 +43,11 @@ function buildEquityCurve(trades, startingCapital) {
   const drawdownPct = [0];
   for (const tr of trades) {
     equity += tr.pnl;
+    if (equity > peak) peak = equity;
     points.push({ t: tr.exitTime, equity, label: `${tr.symbol} ${tr.side}` });
     peaks.push(peak);
     drawdownAbs.push(equity - peak);
     drawdownPct.push(peak > 0 ? (equity - peak) / peak : 0);
-    if (equity > peak) peak = equity;
   }
   return { points, peaks, drawdownAbs, drawdownPct };
 }
@@ -205,7 +205,7 @@ function overnightAnalysis(trades) {
   };
 }
 
-function analyze(trades, startingCapital) {
+function analyze(trades, startingCapital, riskFreeRate = DEFAULT_RISK_FREE_RATE) {
   const n = trades.length;
   const empty = !n;
   const wins = trades.filter((t) => t.pnl > 0);
@@ -226,9 +226,9 @@ function analyze(trades, startingCapital) {
   const dr = dailyReturns(trades, startingCapital);
   const drMean = mean(dr);
   const drStd = std(dr);
-  
+
   // --- Changes for issue 7: Sortino denominator now uses standard downside deviation (population)
-  const targetPerPeriod = RISK_FREE_RATE / PERIODS_PER_YEAR;
+  const targetPerPeriod = riskFreeRate / PERIODS_PER_YEAR;
   const downsideSquared = dr.map(r => {
     const excess = r - targetPerPeriod;
     return excess < 0 ? excess * excess : 0;
@@ -308,7 +308,7 @@ function analyze(trades, startingCapital) {
       calmar,
       annualizedReturn,
       totalReturnPct,
-      riskFreeRate: RISK_FREE_RATE,
+      riskFreeRate,
       periodsPerYear: PERIODS_PER_YEAR,
     },
     behavior: {
@@ -341,7 +341,6 @@ function analyze(trades, startingCapital) {
 
   return {
     metrics,
-    metrics,
     equityCurve: equity.points.map((p) => ({ t: p.t, equity: p.equity, label: p.label })),
     drawdownCurve: equity.points.map((p, i) => ({
       t: p.t,
@@ -352,4 +351,4 @@ function analyze(trades, startingCapital) {
   };
 }
 
-module.exports = { analyze, RISK_FREE_RATE, PERIODS_PER_YEAR };
+module.exports = { analyze, RISK_FREE_RATE: DEFAULT_RISK_FREE_RATE, PERIODS_PER_YEAR };
