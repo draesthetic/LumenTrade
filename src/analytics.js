@@ -54,9 +54,11 @@ function buildEquityCurve(trades, startingCapital) {
 
 function dailyReturns(trades, startingCapital) {
   if (!trades.length) return [];
-  // Find min and max exit dates
-  const exitDates = trades.map(t => new Date(t.exitTime));
-  const minDate = new Date(Math.min(...exitDates.map(d => d.getTime())));
+  // Start from the first *entry* date so holding days with no exit register as
+  // zero-return days, giving an accurate denominator for Sharpe/Sortino.
+  const entryDates = trades.map(t => new Date(t.entryTime));
+  const exitDates  = trades.map(t => new Date(t.exitTime));
+  const minDate = new Date(Math.min(...entryDates.map(d => d.getTime())));
   const maxDate = new Date(Math.max(...exitDates.map(d => d.getTime())));
   
   // Build a map of date -> total P&L for that date (from trades)
@@ -205,7 +207,37 @@ function overnightAnalysis(trades) {
   };
 }
 
-function analyze(trades, startingCapital, riskFreeRate = DEFAULT_RISK_FREE_RATE) {
+// Compute the union of all [entryTime, exitTime] intervals to get true
+// market-exposure time (capped at 100% even when trades overlap).
+function mergedDurationMs(trades) {
+  if (!trades.length) return 0;
+  const intervals = trades
+    .map(t => [new Date(t.entryTime).getTime(), new Date(t.exitTime).getTime()])
+    .sort((a, b) => a[0] - b[0]);
+  let total = 0;
+  let [curStart, curEnd] = intervals[0];
+  for (let i = 1; i < intervals.length; i++) {
+    const [s, e] = intervals[i];
+    if (s <= curEnd) {
+      if (e > curEnd) curEnd = e;   // extend overlapping window
+    } else {
+      total += curEnd - curStart;
+      [curStart, curEnd] = [s, e];  // start new window
+    }
+  }
+  total += curEnd - curStart;
+  return total;
+}
+
+function analyze(trades, startingCapital, riskFreeRate = DEFAULT_RISK_FREE_RATE, charges = 0) {
+  // Finding 2 — distribute charges evenly across trades so every downstream
+  // metric (equity curve, Sharpe, win-rate, etc.) works on net P&L.
+  // grossPnl is preserved on each trade object for display purposes.
+  const chargePerTrade = (trades.length > 0 && charges > 0) ? charges / trades.length : 0;
+  if (chargePerTrade > 0) {
+    trades = trades.map(t => ({ ...t, grossPnl: t.pnl, pnl: t.pnl - chargePerTrade }));
+  }
+
   const n = trades.length;
   const empty = !n;
   const wins = trades.filter((t) => t.pnl > 0);
@@ -275,14 +307,17 @@ function analyze(trades, startingCapital, riskFreeRate = DEFAULT_RISK_FREE_RATE)
 
   const lastTradeDate = trades[n - 1]?.exitTime;
   const totalTimeMs = firstDate && lastTradeDate ? lastTradeDate - firstDate : 0;
-  const totalPositionTimeMs = sum(durations);
-  const timeInMarketPct = totalTimeMs > 0 ? (totalPositionTimeMs / totalTimeMs) * 100 : 0;
+  // Finding 4 — use the union of all open intervals (merged) rather than the
+  // raw sum of durations, so overlapping positions don't push the figure above 100%.
+  const totalPositionTimeMs = mergedDurationMs(trades);
+  const timeInMarketPct = totalTimeMs > 0 ? Math.min((totalPositionTimeMs / totalTimeMs) * 100, 100) : 0;
 
   const metrics = {
     profitability: {
       netProfit,
       grossProfit,
       grossLoss,
+      chargesDeducted: charges,
       profitFactor: grossLoss === 0 ? (grossProfit > 0 ? Infinity : 0) : grossProfit / grossLoss,
       expectancy: empty ? 0 : netProfit / n,
     },

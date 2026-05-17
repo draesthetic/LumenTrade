@@ -45,11 +45,16 @@ function categorizeOpenPositions(openPositions) {
   const expired = [];
   for (const pos of openPositions) {
     const expiry = getContractExpiry(pos.symbol);
-    if (expiry && expiry < now) {
-      // Set expiry time to 10:00:00 UTC (which is 15:30 IST) to reflect settlement at market close
-      const expiryWithTime = new Date(expiry);
-      expiryWithTime.setUTCHours(10, 0, 0, 0);
-      expired.push({ ...pos, expiredAt: expiryWithTime });
+    if (expiry) {
+      // Finding 3 — compare against 15:30 IST (= 10:00:00 UTC) not midnight UTC,
+      // so a contract doesn't appear expired before market opens on expiry day.
+      const expiryClose = new Date(expiry);
+      expiryClose.setUTCHours(10, 0, 0, 0);
+      if (expiryClose < now) {
+        expired.push({ ...pos, expiredAt: expiryClose });
+      } else {
+        active.push(pos);
+      }
     } else {
       active.push(pos);
     }
@@ -72,7 +77,14 @@ app.post('/upload', upload.fields([{ name: 'file', maxCount: 1 }, { name: 'pnlFi
       return res.status(400).json({ error: 'Starting capital must be a positive number.' });
     }
 
-    const fills = parseTradebook(tradebookFile.buffer);
+    const riskFreeRate = Number(req.body.riskFreeRate);
+    const effectiveRiskFreeRate = Number.isFinite(riskFreeRate) && riskFreeRate >= 0 ? riskFreeRate : 0.065;
+
+    // Finding 2 — accept total charges (brokerage + STT + GST + duties) so
+    // analytics can distribute them across trades and report net P&L.
+    const charges = Math.max(0, Number(req.body.charges) || 0);
+
+    const { fills, warnings: tbWarnings } = parseTradebook(tradebookFile.buffer);
     if (!fills.length) return res.status(400).json({ error: 'No usable trade rows found in tradebook.' });
 
     const { closed, openPositions } = pairTrades(fills);
@@ -83,6 +95,7 @@ app.post('/upload', upload.fields([{ name: 'file', maxCount: 1 }, { name: 'pnlFi
     let unresolvedExpired = expired;
     let pnlFileUsed = false;
 
+    let pnlReconciliation = null;
     const pnlFileUpload = req.files?.pnlFile?.[0];
     if (pnlFileUpload) {
       const pnlEntries = parsePnL(pnlFileUpload.buffer);
@@ -90,25 +103,43 @@ app.post('/upload', upload.fields([{ name: 'file', maxCount: 1 }, { name: 'pnlFi
       settledTrades = settled;
       unresolvedExpired = unresolved;
       pnlFileUsed = true;
+
+      // Finding 2 — cross-validate gross P&L from the tradebook against
+      // realizedPnl from the P&L statement; flag any significant discrepancy.
+      const tradebookGross = [...closed, ...settledTrades].reduce((s, t) => s + t.pnl, 0);
+      const pnlFileTotal   = pnlEntries.reduce((s, e) => s + e.realizedPnl, 0);
+      const diff = tradebookGross - pnlFileTotal;
+      pnlReconciliation = {
+        tradebookGross: Math.round(tradebookGross * 100) / 100,
+        pnlFileNet:     Math.round(pnlFileTotal  * 100) / 100,
+        difference:     Math.round(diff          * 100) / 100,
+        note: Math.abs(diff) > 100
+          ? `Gross P&L mismatch of ₹${Math.abs(Math.round(diff))} between tradebook and P&L file — difference likely represents charges/taxes.`
+          : 'Tradebook and P&L file reconcile within ₹100.',
+      };
     }
 
     // Merge settled trades into closed trades and re-sort by exitTime
     const allClosed = [...closed, ...settledTrades].sort((a, b) => new Date(a.exitTime) - new Date(b.exitTime));
 
-    const result = analyze(allClosed, startingCapital);
+    const result = analyze(allClosed, startingCapital, effectiveRiskFreeRate, charges);
 
     res.json({
       startingCapital,
+      chargesDeducted: charges,
       fillCount: fills.length,
       openPositions: active,
       expiredPositions: unresolvedExpired,
       settledPositions: settledTrades,
       pnlFileUsed,
+      pnlReconciliation,
+      warnings: tbWarnings,
       ...result,
     });
   } catch (err) {
     console.error(err);
-    res.status(400).json({ error: err.message || 'Failed to process file.' });
+    const isServerError = err instanceof TypeError || err instanceof ReferenceError;
+    res.status(isServerError ? 500 : 400).json({ error: err.message || 'Failed to process file.' });
   }
 });
 
