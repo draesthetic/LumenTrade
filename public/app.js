@@ -11,14 +11,16 @@
 /* ── Globals ─────────────────────────────────────────────────────────────── */
 let navChart, ddChart, dowChart, rollingChart;
 let allTrades      = [];
+let originalTrades = []; // full trade list from server (preserved for range resets)
 let filteredTrades = [];
 let currentSort    = { key: 'exitTime', dir: 1 };
 let currentSide    = 'all';
 let currentSearch  = '';
-let expandedRow    = null;
 let fullNavData    = null; // { labels, values } for range slicing
 let maxAbsPnl      = 0;
 let isSyncingScroll = false;
+let chartScrollAbortController = null;
+let currentServerData = null; // stores original server response
 
 /* ── Formatters ──────────────────────────────────────────────────────────── */
 const inr     = v => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v);
@@ -39,6 +41,18 @@ function fmtDuration(ms) {
 function fmtDate(d) {
   return new Date(d).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' });
 }
+
+/* ── Session restore ─────────────────────────────────────────────────────── */
+(function restoreSession() {
+  try {
+    const cached = sessionStorage.getItem('lastAnalysis');
+    if (cached) {
+      const data = JSON.parse(cached);
+      // Need a small delay so DOM is ready
+      requestAnimationFrame(() => render(data));
+    }
+  } catch (_) {}
+})();
 function fmtDateShort(d) {
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
@@ -175,6 +189,9 @@ form.addEventListener('submit', async e => {
     } else if (data.expiredPositions?.length) {
       trailingNote = ` · <span style="color:var(--muted)">${data.expiredPositions.length} expired contract${data.expiredPositions.length > 1 ? 's' : ''} (upload P&amp;L file to include settlement P&amp;L)</span>`;
     }
+    if (data.warnings?.length) {
+      trailingNote += ` <span style="color:var(--amber);font-size:12px;margin-left:8px;cursor:help" title="${data.warnings.join('\n')}">⚠ ${data.warnings.length} warning${data.warnings.length > 1 ? 's' : ''}</span>`;
+    }
     statusText.innerHTML = `Parsed <strong>${data.fillCount} fills</strong> → <strong>${data.trades.length} closed trades</strong>${trailingNote}`;
     if (data.openPositions.length) {
       statusOpen.textContent = `${data.openPositions.length} open`;
@@ -203,6 +220,8 @@ form.addEventListener('submit', async e => {
 /* ── Master render ───────────────────────────────────────────────────────── */
 function render(data) {
   resultsEl.hidden = false;
+  currentServerData = data;
+  originalTrades = data.trades.slice();
   renderHeroStrip(data);
   renderCharts(data);
   renderMetrics(data.metrics, data.trades);
@@ -211,6 +230,9 @@ function render(data) {
   applyFilters();
   renderSymbolsTab(data.trades, data.metrics);
   renderExtendedTab(data.metrics);
+  updateRangeBadge('ALL');
+  // Persist to sessionStorage so refreshing doesn't lose analysis
+  try { sessionStorage.setItem('lastAnalysis', JSON.stringify(data)); } catch (_) {}
 }
 
 /* ── ② Hero KPI strip ────────────────────────────────────────────────────── */
@@ -269,6 +291,9 @@ function renderCharts(data) {
   buildRollingChart(data.metrics, data.trades);
   renderOvernightStats(data.metrics);
 
+  // Remove old scroll listeners before adding new ones (prevents accumulation on re-upload)
+  if (chartScrollAbortController) chartScrollAbortController.abort();
+  chartScrollAbortController = new AbortController();
   syncChartScroll();
   bindWheelScroll();
 
@@ -304,7 +329,7 @@ function syncChartScroll() {
         if (el !== scroller) el.scrollLeft = left;
       });
       requestAnimationFrame(() => { isSyncingScroll = false; });
-    });
+    }, { signal: chartScrollAbortController.signal });
   });
 }
 
@@ -315,7 +340,7 @@ function bindWheelScroll() {
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
       scroller.scrollLeft += e.deltaY;
       e.preventDefault();
-    }, { passive: false });
+    }, { passive: false, signal: chartScrollAbortController.signal });
   });
 }
 
@@ -495,7 +520,7 @@ function buildRollingChart(metrics, trades) {
   rollingChart = new Chart(document.getElementById('rolling-chart'), {
     type: 'line',
     data: {
-      labels: filtered20.length ? filtered20.map(r => r.index) : filtered50.map(r => r.index),
+      labels: filtered20.length ? filtered20.map(r => new Date(tradeMap.get(r.index).exitTime)) : filtered50.map(r => new Date(tradeMap.get(r.index).exitTime)),
       datasets: [
         {
           label: 'Expectancy (20)',
@@ -524,7 +549,7 @@ function buildRollingChart(metrics, trades) {
       maintainAspectRatio: false,
       plugins: { legend: { display: true, labels: { color: chartTickColor(), boxWidth: 10, boxHeight: 10 } } },
       scales: {
-        x: { grid: { display: false }, ticks: { color: chartTickColor(), display: false } },
+        x: { type: 'time', time: { tooltipFormat: 'PP' }, ticks: { color: chartTickColor(), maxTicksLimit: 6 }, grid: { display: false } },
         y: { grid: { color: chartGridColor() }, ticks: { color: chartTickColor(), callback: v => '₹' + Math.round(v).toLocaleString('en-IN') } },
       },
     },
@@ -557,8 +582,8 @@ function renderPnlDist(trades) {
   const container = document.getElementById('pnl-dist');
   if (!trades.length) { container.innerHTML = ''; return; }
   const maxAbs = trades.reduce((acc, t) => Math.max(acc, Math.abs(t.pnl)), 1);
-  const minPnl = Math.min(...trades.map(t => t.pnl));
-  const maxPnl = Math.max(...trades.map(t => t.pnl));
+  const minPnl = trades.reduce((acc, t) => Math.min(acc, t.pnl), Infinity);
+  const maxPnl = trades.reduce((acc, t) => Math.max(acc, t.pnl), -Infinity);
 
   const barWidth = Math.max(3, Math.min(6, Math.floor(1200 / trades.length)));
 
@@ -577,6 +602,170 @@ function renderPnlDist(trades) {
     </div>`;
 }
 
+/* Helper: compute metrics from a subset of trades (used when range filter is active) */
+function computeRangeMetrics(trades, equityValues, ddValues, startCap) {
+  const n = trades.length;
+  const empty = !n;
+  const wins = trades.filter(t => t.pnl > 0);
+  const losses = trades.filter(t => t.pnl < 0);
+  const be = trades.filter(t => t.pnl === 0);
+
+  const netProfit = trades.reduce((s, t) => s + t.pnl, 0);
+  const grossProfit = wins.reduce((s, t) => s + t.pnl, 0);
+  const grossLoss = Math.abs(losses.reduce((s, t) => s + t.pnl, 0));
+
+  const firstEq = equityValues[0] || startCap;
+  const lastEq = equityValues[equityValues.length - 1] || startCap;
+  const totalReturnPct = firstEq > 0 ? (lastEq - firstEq) / firstEq : 0;
+
+  const maxDdPct = ddValues.length ? ddValues.reduce((acc, v) => Math.min(acc, v), 0) / 100 : 0;
+  const maxDD = firstEq * maxDdPct;
+
+  const longs = trades.filter(t => t.side === 'long');
+  const shorts = trades.filter(t => t.side === 'short');
+
+  // Streaks
+  let maxW = 0, maxL = 0, curW = 0, curL = 0;
+  for (const t of trades) {
+    if (t.pnl > 0) { curW++; curL = 0; if (curW > maxW) maxW = curW; }
+    else if (t.pnl < 0) { curL++; curW = 0; if (curL > maxL) maxL = curL; }
+    else { curW = 0; curL = 0; }
+  }
+
+  // Durations
+  const durations = trades.map(t => t.durationMs).filter(d => d != null && isFinite(d));
+  const avgDurationMs = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
+  const sortedDurations = [...durations].sort((a, b) => a - b);
+  const medianDurationMs = sortedDurations.length ?
+    (sortedDurations.length % 2 ? sortedDurations[Math.floor(sortedDurations.length / 2)] :
+    (sortedDurations[sortedDurations.length / 2 - 1] + sortedDurations[sortedDurations.length / 2]) / 2) : 0;
+
+  // Trade frequency
+  let perDay = 0, perWeek = 0, perMonth = 0;
+  if (n) {
+    const firstDate = new Date(trades[0].entryTime);
+    const lastDate = new Date(trades[n - 1].exitTime);
+    const totalDays = Math.max((lastDate - firstDate) / (24 * 3600 * 1000), 1);
+    perDay = n / totalDays;
+    perWeek = n / (totalDays / 7);
+    perMonth = n / (totalDays / 30.4375);
+  }
+
+  // Position sizing
+  const qtys = trades.map(t => t.qty).filter(q => q != null && isFinite(q));
+  const sortedQtys = [...qtys].sort((a, b) => a - b);
+  const avgQty = qtys.length ? qtys.reduce((a, b) => a + b, 0) / qtys.length : 0;
+  const medianQty = sortedQtys.length ?
+    (sortedQtys.length % 2 ? sortedQtys[Math.floor(sortedQtys.length / 2)] :
+    (sortedQtys[sortedQtys.length / 2 - 1] + sortedQtys[sortedQtys.length / 2]) / 2) : 0;
+
+  // Symbol breakdown
+  const bySymbol = {};
+  for (const t of trades) {
+    if (!bySymbol[t.symbol]) bySymbol[t.symbol] = { trades: 0, pnl: 0, wins: 0, losses: 0 };
+    bySymbol[t.symbol].trades++;
+    bySymbol[t.symbol].pnl += t.pnl;
+    if (t.pnl > 0) bySymbol[t.symbol].wins++;
+    else if (t.pnl < 0) bySymbol[t.symbol].losses++;
+  }
+  const symbolBreakdown = Object.entries(bySymbol)
+    .map(([symbol, data]) => ({ symbol, ...data, winRate: data.trades ? data.wins / data.trades : 0 }))
+    .sort((a, b) => b.pnl - a.pnl);
+
+  // Day of week
+  const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const byDay = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
+  for (const t of trades) {
+    const dow = new Date(t.entryTime).getDay();
+    byDay[dow].push(t.pnl);
+  }
+  const dayOfWeekPnL = Object.entries(byDay).map(([dow, pnls]) => ({
+    day: DAY_NAMES[dow],
+    trades: pnls.length,
+    pnl: pnls.reduce((a, b) => a + b, 0),
+    avgPnl: pnls.length ? pnls.reduce((a, b) => a + b, 0) / pnls.length : 0,
+    winRate: pnls.length ? pnls.filter(p => p > 0).length / pnls.length : 0,
+  }));
+
+  return {
+    profitability: {
+      netProfit,
+      grossProfit,
+      grossLoss,
+      profitFactor: grossLoss === 0 ? (grossProfit > 0 ? Infinity : 0) : grossProfit / grossLoss,
+      expectancy: empty ? 0 : netProfit / n,
+    },
+    risk: {
+      maxDrawdown: maxDD,
+      maxDrawdownPct: maxDdPct,
+      avgDrawdownPct: 0,
+      riskReward: losses.length && wins.length ? (grossProfit / wins.length) / Math.abs(grossLoss / losses.length) : null,
+      ulcerIndex: 0,
+    },
+    performance: {
+      totalTrades: n,
+      winRate: empty ? 0 : wins.length / n,
+      lossRate: empty ? 0 : losses.length / n,
+      avgWin: wins.length ? grossProfit / wins.length : 0,
+      avgLoss: losses.length ? grossLoss / losses.length : 0,
+      largestWin: wins.length ? wins.reduce((acc, t) => Math.max(acc, t.pnl), -Infinity) : 0,
+      largestLoss: losses.length ? losses.reduce((acc, t) => Math.min(acc, t.pnl), Infinity) : 0,
+    },
+    efficiency: {
+      sharpe: null,
+      sortino: null,
+      calmar: null,
+      annualizedReturn: 0,
+      totalReturnPct,
+    },
+    behavior: {
+      totalTrades: n,
+      avgDurationMs,
+      medianDurationMs,
+      stdDurationMs: 0,
+      longCount: longs.length,
+      longPnL: longs.reduce((s, t) => s + t.pnl, 0),
+      shortCount: shorts.length,
+      shortPnL: shorts.reduce((s, t) => s + t.pnl, 0),
+      maxConsecWins: maxW,
+      maxConsecLosses: maxL,
+      tradeFrequency: { perDay, perWeek, perMonth },
+      timeInMarketPct: 0,
+    },
+    extended: {
+      dayOfWeekPnL,
+      positionSizing: { avg: avgQty, median: medianQty },
+      symbolBreakdown,
+      rollingExpectancy20: [],
+      rollingExpectancy50: [],
+      overnightVsDayTrades: { overnightCount: 0, overnightPnL: 0, dayTradeCount: 0, dayTradePnL: 0, overnightWinRate: 0, dayTradeWinRate: 0 },
+      breakevenCount: be.length,
+      profitPerTrade: empty ? 0 : netProfit / n,
+      recoveryFactor: null,
+      avgRiskRewardMultiple: null,
+    }
+  };
+}
+
+function updateRangeBadge(range) {
+  const heroStrip = document.getElementById('hero-strip');
+  if (!heroStrip) return;
+  let badge = heroStrip.querySelector('.range-badge');
+  if (!badge) {
+    badge = document.createElement('div');
+    badge.className = 'range-badge';
+    badge.style.cssText = 'position:absolute;top:8px;right:12px;font-size:11px;padding:2px 8px;border-radius:4px;background:var(--accent);color:#fff;opacity:0.85;pointer-events:none;';
+    heroStrip.style.position = 'relative';
+    heroStrip.appendChild(badge);
+  }
+  if (range === 'ALL') {
+    badge.style.display = 'none';
+  } else {
+    badge.style.display = 'block';
+    badge.textContent = range === '1M' ? 'Last 1 Month' : 'Last 3 Months';
+  }
+}
+
 /* ③ Range buttons */
 function setupRangeButtons() {
   document.querySelectorAll('.range-btn').forEach(btn => {
@@ -589,7 +778,7 @@ function setupRangeButtons() {
 }
 
 function applyRange(range) {
-  if (!fullNavData) return;
+  if (!fullNavData || !currentServerData) return;
   const { labels, values, ddValues } = fullNavData;
   let slicedLabels, slicedValues, slicedDd;
 
@@ -618,6 +807,21 @@ function applyRange(range) {
   ddChart.data.datasets[0].data = slicedDd;
   ddChart.update();
   renderNavCurrent(slicedValues);
+
+  // Filter trades to the same range and update metrics + table
+  const rangeCutoff = range === 'ALL' ? null : new Date(slicedLabels[0]);
+  const rangeTrades = range === 'ALL' ? originalTrades.slice() : originalTrades.filter(t => new Date(t.exitTime) >= rangeCutoff);
+  allTrades = rangeTrades;
+  maxAbsPnl = allTrades.reduce((acc, t) => Math.max(acc, Math.abs(t.pnl)), 1);
+  renderPnlDist(allTrades);
+  applyFilters();
+
+  const rangeMetrics = computeRangeMetrics(rangeTrades, slicedValues, slicedDd, currentServerData.startingCapital);
+  renderHeroStrip({ ...currentServerData, trades: rangeTrades, metrics: rangeMetrics, equityCurve: slicedLabels.map((t, i) => ({ t, equity: slicedValues[i] })) });
+  renderMetrics(rangeMetrics, rangeTrades);
+  renderSymbolsTab(rangeTrades, rangeMetrics);
+  renderExtendedTab(rangeMetrics);
+  updateRangeBadge(range);
 }
 
 /* ── ④ Metrics cards ─────────────────────────────────────────────────────── */
@@ -713,6 +917,35 @@ function renderMetrics(m, trades) {
       </div>
     </div>`).join('');
 }
+
+/* ── CSV Export ──────────────────────────────────────────────────────────── */
+function downloadCSV(trades) {
+  if (!trades.length) return;
+  const headers = ['Symbol', 'Side', 'Qty', 'Entry Price', 'Exit Price', 'Entry Time', 'Exit Time', 'Duration (min)', 'P&L'];
+  const rows = trades.map(t => [
+    t.symbol,
+    t.side,
+    t.qty,
+    t.entryPrice,
+    t.exitPrice,
+    new Date(t.entryTime).toISOString(),
+    new Date(t.exitTime).toISOString(),
+    Math.round((t.durationMs || 0) / 60000),
+    t.pnl,
+  ]);
+  const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'trades.csv';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+}
+
+document.getElementById('export-csv').addEventListener('click', () => downloadCSV(filteredTrades.length ? filteredTrades : allTrades));
 
 /* ── ⑤ Trades table ──────────────────────────────────────────────────────── */
 

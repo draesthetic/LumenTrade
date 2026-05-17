@@ -360,12 +360,16 @@ body.light .icon-moon { display: none; }
 /* ── Charts layout ──────────────────────────────────────────────────────────── */
 .charts {
   display: grid;
-  grid-template-columns: 3fr 1fr;
+  grid-template-columns: 1fr;
   gap: 12px;
   margin-bottom: 12px;
-  align-items: start;
 }
-.charts-right { display: flex; flex-direction: column; gap: 12px; }
+
+.charts-lower {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
 
 .chart-card {
   background: var(--s1); border: 1px solid var(--border);
@@ -418,6 +422,23 @@ body.light .icon-moon { display: none; }
 
 .chart-card--nav .chart-wrap { height: 220px; margin-bottom: 6px; }
 .chart-card--dd  .chart-wrap { height: 110px; margin: 8px 0 6px; }
+.chart-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.chart-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+.chart-scroll-inner {
+  min-width: 100%;
+}
+.chart-card--dist .chart-scroll {
+  padding-bottom: 4px;
+}
 
 /* Drawdown stats */
 .dd-stats {
@@ -430,7 +451,7 @@ body.light .icon-moon { display: none; }
 .chart-card--dist { padding: 14px 16px; }
 .chart-card--dist h2 { margin-bottom: 10px; }
 .pnl-dist-bars {
-  display: flex; align-items: flex-end; gap: 3px; height: 70px;
+  display: inline-flex; align-items: flex-end; gap: 3px; height: 70px;
 }
 .pnl-bar {
   flex: 1; border-radius: 6px 6px 0 0; cursor: default; transition: opacity 0.15s, transform 0.15s;
@@ -873,8 +894,7 @@ tbody td:nth-child(2) { text-align: left; }
   .chart-card--overnight { grid-column: span 2; }
 }
 @media (max-width: 900px) {
-  .charts { grid-template-columns: 1fr; }
-  .charts-right { flex-direction: row; }
+  .charts-lower { grid-template-columns: 1fr; }
   .hero-strip { grid-template-columns: repeat(3, 1fr); }
   .hero-kpi:nth-child(3) { border-right: none; }
   .hero-kpi:nth-child(4) { border-top: 1px solid var(--border); }
