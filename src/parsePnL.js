@@ -30,7 +30,7 @@ function parsePnL(buffer) {
     symbol:     col('symbol'),
     buyValue:   col('buy value'),
     sellValue:  col('sell value'),
-    realizedPnl:col('realized p'),
+    realizedPnl: header.findIndex(h => /\brealized\s+(p&l|pnl)\b/.test(h)),
     openQty:    col('open quantity'),
     openType:   col('open quantity type'),
     openValue:  col('open value'),

@@ -4,10 +4,7 @@
   "description": "Webapp that turns Zerodha tradebooks into NAV curve, drawdown, and trade statistics.",
   "main": "server.js",
   "scripts": {
-    "setup": "npm install --prefix landing",
-    "dev": "NODE_ENV=development node server.js",
-    "start": "NODE_ENV=production node server.js",
-    "build:landing": "npm run setup && npm run --prefix landing build"
+    "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.19.2",

@@ -33,6 +33,11 @@ function parseExecTime(value, fallbackDate) {
 }
 
 function parseTradebook(buffer) {
+  // Strip UTF-8 BOM if present (Zerodha CSV exports sometimes include it)
+  if (buffer.length >= 3 && buffer[0] === 0xEF && buffer[1] === 0xBB && buffer[2] === 0xBF) {
+    buffer = buffer.slice(3);
+  }
+
   const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const sheetName = wb.SheetNames[0];
   const sheet = wb.Sheets[sheetName];
@@ -54,6 +59,7 @@ function parseTradebook(buffer) {
   }
 
   const fills = [];
+  let fallbackCount = 0;
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const r = rows[i];
     if (!r || r.every((c) => c === null || c === '')) continue;
@@ -62,8 +68,12 @@ function parseTradebook(buffer) {
     const qty = Number(r[idx.qty]);
     const price = Number(r[idx.price]);
     if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price <= 0) continue;
-    const execTime = parseExecTime(r[idx.execTime], r[idx.tradeDate]);
+    const rawExecTime = r[idx.execTime];
+    const execTime = parseExecTime(rawExecTime, r[idx.tradeDate]);
     if (!execTime) continue;
+    if (!rawExecTime || (typeof rawExecTime === 'string' && !rawExecTime.trim())) {
+      fallbackCount++;
+    }
     fills.push({
       symbol: String(r[idx.symbol]).trim(),
       segment: idx.segment >= 0 ? String(r[idx.segment] || '').trim() : '',
@@ -76,7 +86,10 @@ function parseTradebook(buffer) {
   }
 
   fills.sort((a, b) => a.execTime - b.execTime);
-  return fills;
+  const warnings = fallbackCount > 0
+    ? [`${fallbackCount} trade(s) had missing Order Execution Time and were ordered by trade date only. Intraday fill sequence may be inaccurate.`]
+    : [];
+  return { fills, warnings };
 }
 
 module.exports = { parseTradebook };
