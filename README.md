@@ -9,7 +9,9 @@ npm install
 npm start
 ```
 
-Then open http://localhost:3000, upload a Zerodha tradebook (F&O or EQ export), enter starting capital, hit Analyze.
+Then open <http://127.0.0.1:3000>, upload a Zerodha tradebook (F&O or EQ export), enter starting capital, hit Analyze.
+
+The server binds to **`127.0.0.1` only** by default — there is no auth in front of it and the upload page exposes real P&L data. To reach it from another machine, either SSH-tunnel (`ssh -L 3000:localhost:3000 host`) or set `HOST=0.0.0.0` explicitly (only do this on a trusted LAN). Express is pinned to `^4.19.2` and resolved to ≥4.21 to pull in fixes for CVE-2024-43796 (`res.sendFile` path traversal) and CVE-2024-43800 (`res.redirect` XSS).
 
 ## Metrics
 
