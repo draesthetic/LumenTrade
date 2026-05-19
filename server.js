@@ -137,15 +137,23 @@ app.post('/upload', upload.fields([{ name: 'file', maxCount: 1 }, { name: 'pnlFi
       ...result,
     });
   } catch (err) {
+    // Log the real error server-side; never echo err.message to the client
+    // (can leak file paths, library internals, stack-trace fragments).
     console.error(err);
     const isServerError = err instanceof TypeError || err instanceof ReferenceError;
-    res.status(isServerError ? 500 : 400).json({ error: err.message || 'Failed to process file.' });
+    res.status(isServerError ? 500 : 400).json({
+      error: isServerError ? 'Internal server error.' : 'Failed to process file.',
+    });
   }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Trade analytics on http://localhost:${PORT}`);
+// Bind to loopback only — the analytics dashboard exposes real Zerodha P&L
+// data and has no auth in front of it. Anyone wanting remote access should
+// SSH-tunnel (ssh -L 3000:localhost:3000 host) or wire in real auth first.
+const HOST = process.env.HOST || '127.0.0.1';
+app.listen(PORT, HOST, () => {
+  console.log(`Trade analytics on http://${HOST}:${PORT}`);
 });
 
 // Export helper functions for testing
