@@ -67,6 +67,14 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Serve the analytics engine to the browser so range filtering can re-run the
+// exact same metric computation on a sliced window. Single source of truth with
+// the server-side require() above — no separate client implementation to drift.
+app.get('/analytics.js', (_req, res) => {
+  res.type('application/javascript');
+  res.sendFile(path.join(__dirname, 'src', 'analytics.js'));
+});
+
 app.post('/upload', upload.fields([{ name: 'file', maxCount: 1 }, { name: 'pnlFile', maxCount: 1 }]), (req, res) => {
   try {
     const tradebookFile = req.files?.file?.[0];
@@ -153,7 +161,7 @@ const PORT = process.env.PORT || 3000;
 // SSH-tunnel (ssh -L 3000:localhost:3000 host) or wire in real auth first.
 const HOST = process.env.HOST || '127.0.0.1';
 app.listen(PORT, HOST, () => {
-  console.log(`Trade analytics on http://${HOST}:${PORT}`);
+  console.log(`LumenTrade on http://${HOST}:${PORT}`);
 });
 
 // Export helper functions for testing

@@ -1,4 +1,4 @@
-# Trade Analytics
+# LumenTrade
 
 Self-hosted Node.js webapp that turns a Zerodha tradebook (.xlsx or .csv) into a NAV curve, drawdown chart, and a full set of profitability / risk / efficiency / behavior metrics.
 

@@ -1,7 +1,7 @@
 {
-  "name": "chase-trade-analysis",
+  "name": "lumentrade",
   "version": "1.0.0",
-  "description": "Webapp that turns Zerodha tradebooks into NAV curve, drawdown, and trade statistics.",
+  "description": "LumenTrade — webapp that turns Zerodha tradebooks into NAV curve, drawdown, and trade statistics.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

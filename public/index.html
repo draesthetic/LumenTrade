@@ -3,304 +3,300 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Trade Analytics</title>
+  <title>LumenTrade · Trade Analytics</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 </head>
 <body>
-  <div class="ambient" aria-hidden="true">
-    <span class="orb orb-1"></span>
-    <span class="orb orb-2"></span>
-    <span class="orb orb-3"></span>
-    <span class="orb orb-4"></span>
-  </div>
 
-  <!-- ① Header -->
-  <header class="glass-nav reveal">
-    <div class="header-row">
-      <div>
-        <h1>Trade Analytics</h1>
-        <p class="muted">Upload a Zerodha tradebook (.xlsx or .csv) to compute NAV, drawdown, and full trade statistics.</p>
-      </div>
-      <button id="theme-toggle" class="theme-btn" title="Toggle light/dark mode" aria-label="Toggle theme">
-        <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-        <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+  <!-- ── Float-pill navigation ─────────────────────────────────────────────── -->
+  <nav class="pillnav">
+    <div class="pill-brand"><span class="dot"></span>LumenTrade</div>
+    <div class="pill-links">
+      <a href="#overview" class="active">Overview</a>
+      <a href="#charts">Charts</a>
+      <a href="#metrics-sec">Metrics</a>
+      <a href="#trades">Trades</a>
+    </div>
+    <div class="pill-actions">
+      <button class="theme-toggle" id="theme-toggle" aria-label="Toggle paper / ink theme" title="Toggle Paper / Ink">
+        <svg class="i-moon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="i-sun" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><line x1="4.9" y1="4.9" x2="7" y2="7"/><line x1="17" y1="17" x2="19.1" y2="19.1"/><line x1="4.9" y1="19.1" x2="7" y2="17"/><line x1="17" y1="7" x2="19.1" y2="4.9"/></svg>
       </button>
+      <button class="nav-cta" id="nav-analyze">Analyze →</button>
     </div>
-  </header>
+  </nav>
 
-  <!-- ① Upload card: drag-and-drop + capital presets + rich status -->
-  <section class="upload-card glass-panel reveal delay-1 parallax">
-    <form id="upload-form">
-      <div id="drop-zone" class="drop-zone">
-        <input type="file" name="file" id="file" accept=".xlsx,.xls,.csv" required />
-        <div class="drop-zone-icon">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-        </div>
-        <div class="drop-zone-text">
-          <span class="drop-primary">Drop Zerodha tradebook here</span>
-          <span class="drop-secondary">.xlsx or .csv · up to 10 MB · or click to browse</span>
-        </div>
-        <div class="drop-zone-file" id="drop-file-info" hidden>
-          <span id="drop-filename"></span>
-          <span id="drop-filesize" class="muted"></span>
-        </div>
-      </div>
+  <div class="wrap">
 
-      <div class="upload-right">
-        <div class="capital-field">
-          <label for="startingCapital">Starting Capital</label>
-          <div class="capital-input-wrap">
-            <span class="currency-symbol">₹</span>
-            <input type="number" name="startingCapital" id="startingCapital" value="1000000" min="1" step="1" required />
-          </div>
-        </div>
-        <div class="capital-field" style="margin-top:10px">
-          <label for="riskFreeRate">Risk-Free Rate</label>
-          <div class="capital-input-wrap">
-            <input type="number" name="riskFreeRate" id="riskFreeRate" value="0.065" min="0" max="1" step="0.001" style="padding-left:10px" />
-          </div>
-          <span class="muted" style="font-size:11px">Decimal (e.g. 0.065 = 6.5%) — used for Sharpe / Sortino</span>
-        </div>
-        <div class="capital-presets">
-          <span class="presets-label">Quick amounts</span>
-          <div class="presets-row">
-            <button type="button" class="preset-btn" data-value="500000">5L</button>
-            <button type="button" class="preset-btn" data-value="1000000">10L</button>
-            <button type="button" class="preset-btn" data-value="2500000">25L</button>
-            <button type="button" class="preset-btn" data-value="5000000">50L</button>
-          </div>
-        </div>
-        <button type="submit" id="analyze-btn">Analyze →</button>
+    <!-- ── Masthead ─────────────────────────────────────────────────────────── -->
+    <header class="masthead">
+      <div class="mast-eyebrow">Zerodha Tradebook Analytics</div>
+      <h1 class="mast-title">Read your <em>edge</em> off the page.</h1>
+      <p class="mast-sub">Drop a Zerodha tradebook and LumenTrade reconstructs every round trip — NAV curve, drawdown, and a full set of profitability, risk, efficiency and behaviour metrics. No database, all in-memory, processed locally.</p>
+      <div class="mast-meta" id="mast-meta">
+        <div class="mm"><span class="mm-k">Period</span><span class="mm-v" id="mm-period">—</span></div>
+        <div class="mm"><span class="mm-k">Fills → Trades</span><span class="mm-v" id="mm-fills">—</span></div>
+        <div class="mm"><span class="mm-k">Starting Capital</span><span class="mm-v" id="mm-capital">—</span></div>
+        <div class="mm"><span class="mm-k">Instruments</span><span class="mm-v" id="mm-symbols">—</span></div>
       </div>
-    </form>
+    </header>
 
-    <!-- Optional P&L file row -->
-    <div class="pnl-upload-row">
-      <label class="pnl-upload-label" for="pnlFile">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        P&amp;L Statement
-        <span class="pnl-optional">optional — resolves settlement prices for expired contracts</span>
-      </label>
-      <div class="pnl-file-wrap">
-        <input type="file" name="pnlFile" id="pnlFile" accept=".xlsx,.xls,.csv" form="upload-form" />
-        <span id="pnl-file-name" class="pnl-file-name muted">No file chosen</span>
-      </div>
-    </div>
-
-    <!-- ③ Rich status bar -->
-    <div id="status-bar" hidden>
-      <div class="status-pulse"></div>
-      <span id="status-text" class="status-text"></span>
-      <div class="status-divider"></div>
-      <span id="status-open" class="badge badge-amber" hidden></span>
-      <span id="status-date" class="status-date muted"></span>
-    </div>
-    <div id="status-error" class="status-error" hidden></div>
-  </section>
-
-  <!-- Results -->
-  <section id="results" class="reveal delay-2" hidden>
-
-    <!-- ② Hero KPI strip -->
-    <div class="hero-strip glass-panel parallax" id="hero-strip">
-      <div class="hero-kpi" id="hkpi-pnl">
-        <div class="hkpi-label">Net P&amp;L</div>
-        <div class="hkpi-value"></div>
-        <div class="hkpi-sub"></div>
-        <div class="hkpi-bar green"></div>
-      </div>
-      <div class="hero-kpi" id="hkpi-return">
-        <div class="hkpi-label">Total Return</div>
-        <div class="hkpi-value"></div>
-        <div class="hkpi-sub"></div>
-      </div>
-      <div class="hero-kpi" id="hkpi-winrate">
-        <div class="hkpi-label">Win Rate</div>
-        <div class="hkpi-value"></div>
-        <div class="hkpi-sub"></div>
-      </div>
-      <div class="hero-kpi" id="hkpi-sharpe">
-        <div class="hkpi-label">Sharpe</div>
-        <div class="hkpi-value"></div>
-        <div class="hkpi-sub"></div>
-      </div>
-      <div class="hero-kpi" id="hkpi-dd">
-        <div class="hkpi-label">Max Drawdown</div>
-        <div class="hkpi-value"></div>
-        <div class="hkpi-sub"></div>
-      </div>
-      <div class="hero-kpi" id="hkpi-open">
-        <div class="hkpi-label">Open Positions</div>
-        <div class="hkpi-value"></div>
-        <div class="hkpi-sub"></div>
-      </div>
-    </div>
-
-    <!-- ③ Charts: 3:1 NAV priority + PnL histogram -->
-    <div class="dashboard-frame reveal delay-3" id="dashboard-frame">
-      <div class="charts">
-        <!-- NAV: full width -->
-        <div class="chart-card chart-card--nav glass-panel">
-          <div class="chart-header">
-            <div>
-              <h2>Equity Curve</h2>
-              <div class="nav-current" id="nav-current"></div>
-            </div>
-            <div class="range-btns" id="range-btns">
-              <button class="range-btn" data-range="1M">1M</button>
-              <button class="range-btn" data-range="3M">3M</button>
-              <button class="range-btn active" data-range="ALL">ALL</button>
-            </div>
-          </div>
-          <div class="chart-scroll" id="nav-scroll" data-sync="charts">
-            <div class="chart-scroll-inner" id="nav-scroll-inner">
-              <div class="chart-wrap">
-                <canvas id="nav-chart"></canvas>
+    <!-- ── Upload ───────────────────────────────────────────────────────────── -->
+    <section class="sec" id="upload-sec" style="margin-top:40px">
+      <form id="upload-form">
+        <div class="upload">
+          <label class="drop" id="drop">
+            <input type="file" id="file" name="file" accept=".xlsx,.xls,.csv" required />
+            <div class="drop-default">
+              <div class="drop-icon">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               </div>
+              <div class="drop-title">Drop tradebook here</div>
+              <div class="drop-hint">.xlsx or .csv · up to 10MB · or click to browse</div>
             </div>
-          </div>
-        </div>
-
-        <div class="charts-lower">
-          <!-- Drawdown: red fade -->
-          <div class="chart-card chart-card--dd glass-panel">
-            <h2>Drawdown</h2>
-            <div class="chart-scroll" id="dd-scroll" data-sync="charts">
-              <div class="chart-scroll-inner" id="dd-scroll-inner">
-                <div class="chart-wrap">
-                  <canvas id="dd-chart"></canvas>
+            <div class="drop-file">
+              <div class="df-name" id="df-name"></div>
+              <div class="df-size" id="df-size"></div>
+            </div>
+          </label>
+          <div class="upload-right">
+            <div class="ur-grid">
+              <div>
+                <label class="field-label" for="startingCapital">Starting Capital</label>
+                <div class="capital-wrap">
+                  <span class="cur">₹</span>
+                  <input type="number" id="startingCapital" name="startingCapital" value="1000000" min="1" step="1" required />
+                </div>
+              </div>
+              <div>
+                <label class="field-label" for="riskFreeRate">Risk-Free Rate</label>
+                <div class="rate-wrap">
+                  <input type="number" id="riskFreeRate" name="riskFreeRate" value="0.065" min="0" max="1" step="0.001" />
+                  <span class="rate-hint">decimal · Sharpe / Sortino</span>
                 </div>
               </div>
             </div>
-            <div class="dd-stats" id="dd-stats"></div>
+            <div>
+              <span class="field-label">Quick amounts</span>
+              <div class="presets">
+                <button type="button" class="preset" data-value="500000">5L</button>
+                <button type="button" class="preset active" data-value="1000000">10L</button>
+                <button type="button" class="preset" data-value="2500000">25L</button>
+                <button type="button" class="preset" data-value="5000000">50L</button>
+              </div>
+            </div>
+            <button type="submit" class="btn-analyze" id="analyze-btn">Analyze Tradebook →</button>
+          </div>
+        </div>
+
+        <!-- Optional P&L statement for expired-contract settlement -->
+        <div class="pnl-row">
+          <label class="pnl-label" for="pnlFile">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            P&amp;L Statement
+            <span class="pnl-optional">optional — resolves settlement prices for expired contracts</span>
+          </label>
+          <div class="pnl-file-wrap">
+            <input type="file" id="pnlFile" name="pnlFile" accept=".xlsx,.xls,.csv" />
+            <span id="pnl-file-name" class="pnl-file-name">No file chosen</span>
+          </div>
+        </div>
+      </form>
+
+      <div class="status" id="status">
+        <span class="dot"></span>
+        <span id="status-text"></span>
+        <span class="tag" id="status-open" hidden></span>
+      </div>
+      <div class="status-error" id="status-error" hidden></div>
+    </section>
+
+    <!-- ── Results (revealed after analysis) ────────────────────────────────── -->
+    <div id="results" hidden>
+
+      <!-- ── Overview / KPI strip ───────────────────────────────────────────── -->
+      <section class="sec" id="overview">
+        <div class="sec-head">
+          <div class="sec-title"><span class="sec-num">01</span> The Numbers</div>
+          <div class="sec-note" id="overview-note">at a glance</div>
+        </div>
+        <div class="sec-rule"></div>
+        <div class="kpis reveal" id="kpis" style="margin-top:0; border-top:none;">
+          <div class="kpi" id="hkpi-pnl"><div class="kpi-label">Net P&amp;L</div><div class="kpi-value"></div><div class="kpi-sub"></div></div>
+          <div class="kpi" id="hkpi-return"><div class="kpi-label">Total Return</div><div class="kpi-value"></div><div class="kpi-sub"></div></div>
+          <div class="kpi" id="hkpi-winrate"><div class="kpi-label">Win Rate</div><div class="kpi-value"></div><div class="kpi-sub"></div></div>
+          <div class="kpi" id="hkpi-sharpe"><div class="kpi-label">Sharpe</div><div class="kpi-value"></div><div class="kpi-sub"></div></div>
+          <div class="kpi" id="hkpi-dd"><div class="kpi-label">Max Drawdown</div><div class="kpi-value"></div><div class="kpi-sub"></div></div>
+          <div class="kpi" id="hkpi-open"><div class="kpi-label">Open Positions</div><div class="kpi-value"></div><div class="kpi-sub"></div></div>
+        </div>
+      </section>
+
+      <!-- ── Charts ─────────────────────────────────────────────────────────── -->
+      <section class="sec" id="charts">
+        <div class="sec-head">
+          <div class="sec-title"><span class="sec-num">02</span> Equity &amp; Risk</div>
+          <div class="sec-note">scroll charts horizontally · sync-linked</div>
+        </div>
+        <div class="sec-rule"></div>
+
+        <div class="chart-grid">
+          <!-- NAV -->
+          <div class="panel reveal">
+            <div class="panel-head">
+              <span class="panel-label">Equity Curve · NAV</span>
+              <div class="range-btns" id="range-btns">
+                <button class="range-btn" data-range="1M">1M</button>
+                <button class="range-btn" data-range="3M">3M</button>
+                <button class="range-btn active" data-range="ALL">ALL</button>
+              </div>
+            </div>
+            <div class="panel-big" id="nav-current"></div>
+            <div class="chart-scroll" id="nav-scroll" data-sync="charts">
+              <div class="chart-scroll-inner" id="nav-scroll-inner">
+                <div class="cw-nav"><canvas id="nav-chart"></canvas></div>
+              </div>
+            </div>
           </div>
 
-          <!-- ⑥ PnL distribution -->
-          <div class="chart-card chart-card--dist glass-panel">
-            <h2>P&amp;L per Trade</h2>
-            <div class="chart-scroll" id="pnl-scroll" data-sync="charts">
-              <div class="chart-scroll-inner" id="pnl-scroll-inner">
-                <div id="pnl-dist"></div>
+          <!-- Drawdown + Distribution -->
+          <div class="panel-row">
+            <div class="panel reveal">
+              <div class="panel-head"><span class="panel-label">Drawdown %</span></div>
+              <div class="chart-scroll" id="dd-scroll" data-sync="charts">
+                <div class="chart-scroll-inner" id="dd-scroll-inner">
+                  <div class="cw-dd"><canvas id="dd-chart"></canvas></div>
+                </div>
+              </div>
+              <div class="dd-stats" id="dd-stats"></div>
+            </div>
+            <div class="panel reveal">
+              <div class="panel-head"><span class="panel-label">P&amp;L per Trade</span></div>
+              <div class="chart-scroll" id="pnl-scroll" data-sync="charts">
+                <div class="chart-scroll-inner" id="pnl-scroll-inner">
+                  <div id="pnl-dist"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- DoW + Rolling + Overnight -->
+          <div class="panel-row-3">
+            <div class="panel reveal">
+              <div class="panel-head"><span class="panel-label">P&amp;L by Day of Week</span></div>
+              <div class="cw-sm"><canvas id="dow-chart"></canvas></div>
+            </div>
+            <div class="panel reveal">
+              <div class="panel-head"><span class="panel-label">Rolling Expectancy 20/50</span></div>
+              <div class="cw-sm"><canvas id="rolling-chart"></canvas></div>
+            </div>
+            <div class="panel reveal">
+              <div class="panel-head"><span class="panel-label">Overnight vs Day</span></div>
+              <div class="overnight" id="overnight-stats"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Metrics ────────────────────────────────────────────────────────── -->
+      <section class="sec" id="metrics-sec">
+        <div class="sec-head">
+          <div class="sec-title"><span class="sec-num">03</span> Full Metric Set</div>
+          <div class="sec-note">profitability · risk · efficiency · behaviour</div>
+        </div>
+        <div class="sec-rule" style="margin-bottom:0"></div>
+        <div class="metrics reveal" id="metrics"></div>
+      </section>
+
+      <!-- ── Trades ─────────────────────────────────────────────────────────── -->
+      <section class="sec" id="trades">
+        <div class="sec-head">
+          <div class="sec-title"><span class="sec-num">04</span> Round Trips</div>
+          <div class="sec-note">click any row to expand</div>
+        </div>
+        <div class="sec-rule" style="margin-bottom:0"></div>
+        <div class="trades">
+          <div class="tabbar">
+            <button class="tab active" data-tab="trades">Closed Trades</button>
+            <button class="tab" data-tab="symbols">By Symbol</button>
+            <button class="tab" data-tab="extended">Extended</button>
+            <div class="tab-tools" id="tab-tools">
+              <div class="search-wrap"><span class="si">⌕</span><input type="text" id="symbol-search" placeholder="Filter symbol…" autocomplete="off" /></div>
+              <div class="side-filter">
+                <button class="side-btn active" data-side="all">All</button>
+                <button class="side-btn" data-side="long">Long</button>
+                <button class="side-btn" data-side="short">Short</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="tab-trades">
+            <div class="table-toolbar"><button class="export-btn" id="export-csv" type="button">↓ Export CSV</button></div>
+            <div class="table-wrap">
+              <table id="trades-table">
+                <thead>
+                  <tr>
+                    <th data-key="symbol">Symbol <span class="sort-arrow"></span></th>
+                    <th data-key="side">Side <span class="sort-arrow"></span></th>
+                    <th data-key="qty">Qty <span class="sort-arrow"></span></th>
+                    <th data-key="entryPrice">Entry ₹ <span class="sort-arrow"></span></th>
+                    <th data-key="exitPrice">Exit ₹ <span class="sort-arrow"></span></th>
+                    <th data-key="durationMs">Dur. <span class="sort-arrow"></span></th>
+                    <th data-key="pnl">P&amp;L <span class="sort-arrow"></span></th>
+                  </tr>
+                </thead>
+                <tbody id="trades-tbody"></tbody>
+              </table>
+              <div id="trades-empty" class="table-empty" hidden>No trades match the current filter.</div>
+            </div>
+          </div>
+
+          <div id="tab-symbols" hidden>
+            <div class="table-wrap">
+              <table id="symbols-table">
+                <thead>
+                  <tr>
+                    <th style="text-align:left">Symbol</th>
+                    <th>Trades</th>
+                    <th>P&amp;L</th>
+                    <th>Win Rate</th>
+                    <th>Contribution</th>
+                  </tr>
+                </thead>
+                <tbody id="symbols-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="tab-extended" hidden>
+            <div class="ext-grid">
+              <div class="ext-sec">
+                <h4>Symbol Breakdown</h4>
+                <div id="ext-symbols"></div>
+              </div>
+              <div class="ext-sec">
+                <h4>Day of Week Performance</h4>
+                <div id="ext-dow"></div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <!-- Extended Charts: Day of Week & Rolling Win Rate -->
-      <div class="extended-charts">
-      <div class="chart-card chart-card--dow glass-panel">
-        <h2>P&amp;L by Day of Week</h2>
-        <div class="chart-scroll" id="dow-scroll" data-sync="charts">
-          <div class="chart-scroll-inner" id="dow-scroll-inner">
-            <div class="chart-wrap">
-              <canvas id="dow-chart"></canvas>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="chart-card chart-card--rolling glass-panel">
-        <h2>Rolling Expectancy (20 / 50 trades)</h2>
-        <div class="chart-wrap">
-          <canvas id="rolling-chart"></canvas>
-        </div>
-      </div>
-      <div class="chart-card chart-card--overnight glass-panel">
-        <h2>Overnight vs Day Trades</h2>
-        <div class="overnight-stats" id="overnight-stats"></div>
-      </div>
-      </div>
-    </div>
+    </div><!-- /#results -->
 
-    <!-- ④ Metrics: hero numbers + accent stripe + hierarchy -->
-    <div class="metrics reveal delay-5 parallax" id="metrics"></div>
+    <footer class="foot">
+      <span class="brand">LumenTrade</span>
+      <span id="foot-note">FIFO trade pairing · partial closes · long &amp; short round trips · rf 6.5% · 252 trading days</span>
+    </footer>
 
-    <!-- ⑤ Trades table: tabs + search + filter + sort arrows + expandable rows + by-symbol -->
-    <div class="trades-card glass-panel reveal delay-6">
-      <div class="trades-tabbar">
-        <button class="trades-tab active" data-tab="trades">Closed Trades</button>
-        <button class="trades-tab" data-tab="symbols">By Symbol</button>
-        <button class="trades-tab" data-tab="extended">Extended</button>
-        <div class="trades-controls" id="trades-controls">
-          <div class="search-wrap">
-            <span class="search-icon">⌕</span>
-            <input type="text" id="symbol-search" placeholder="Filter symbol…" autocomplete="off" />
-          </div>
-          <div class="side-filter" id="side-filter">
-            <button class="side-btn active" data-side="all">All</button>
-            <button class="side-btn" data-side="long">Long</button>
-            <button class="side-btn" data-side="short">Short</button>
-          </div>
-        </div>
-      </div>
+  </div>
 
-      <!-- Trades tab -->
-      <div id="tab-trades" class="tab-panel">
-        <div class="table-toolbar">
-          <button id="export-csv" class="export-btn" type="button">Export CSV</button>
-        </div>
-        <div class="table-wrap">
-          <table id="trades-table">
-            <thead>
-              <tr>
-                <th data-key="symbol">Symbol <span class="sort-arrow"></span></th>
-                <th data-key="side">Side <span class="sort-arrow"></span></th>
-                <th data-key="qty">Qty <span class="sort-arrow"></span></th>
-                <th data-key="entryPrice">Entry ₹ <span class="sort-arrow"></span></th>
-                <th data-key="exitPrice">Exit ₹ <span class="sort-arrow"></span></th>
-                <th data-key="durationMs">Dur. <span class="sort-arrow"></span></th>
-                <th data-key="pnl">P&amp;L <span class="sort-arrow"></span></th>
-              </tr>
-            </thead>
-            <tbody id="trades-tbody"></tbody>
-          </table>
-          <div id="trades-empty" class="table-empty" hidden>No trades match the current filter.</div>
-        </div>
-      </div>
-
-      <!-- By-symbol tab -->
-      <div id="tab-symbols" class="tab-panel" hidden>
-        <div class="table-wrap">
-          <table id="symbols-table">
-            <thead>
-              <tr>
-                <th style="text-align:left">Symbol</th>
-                <th>Trades</th>
-                <th>P&amp;L</th>
-                <th>Win Rate</th>
-                <th>Contribution</th>
-              </tr>
-            </thead>
-            <tbody id="symbols-tbody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Extended analytics tab -->
-      <div id="tab-extended" class="tab-panel" hidden>
-        <div class="extended-tab-content">
-          <div class="ext-section">
-            <h3>Symbol Breakdown</h3>
-            <div class="ext-symbols" id="ext-symbols"></div>
-          </div>
-          <div class="ext-section">
-            <h3>Day of Week Performance</h3>
-            <div class="ext-dow" id="ext-dow"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-  </section>
-
+  <script src="/analytics.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

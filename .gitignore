@@ -6,3 +6,6 @@ tradebook-*.xlsx
 tradebook-*.csv
 pnl-*.xlsx
 pnl-*.csv
+
+# Local preview tooling
+.claude/

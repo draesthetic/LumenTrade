@@ -276,7 +276,13 @@ function analyze(trades, startingCapital, riskFreeRate = DEFAULT_RISK_FREE_RATE,
   const firstDate = trades[0]?.entryTime;
   const lastDate = trades[n - 1]?.exitTime;
   const yearsElapsed = firstDate && lastDate ? Math.max((lastDate - firstDate) / (365.25 * 24 * 3600 * 1000), 1 / 365.25) : 1 / 365.25;
-  const annualizedReturn = empty ? 0 : Math.pow(1 + totalReturnPct, 1 / yearsElapsed) - 1;
+  // Guard a wiped-out account: when cumulative return is ≤ -100% (final equity
+  // at or below zero — reachable with leveraged F&O), the base 1+totalReturnPct
+  // is non-positive and Math.pow returns NaN (which then poisons Calmar). Floor
+  // the annualized return at -100%.
+  const annualizedReturn = empty
+    ? 0
+    : (1 + totalReturnPct <= 0 ? -1 : Math.pow(1 + totalReturnPct, 1 / yearsElapsed) - 1);
   const calmar = safeDiv(annualizedReturn, Math.abs(maxDDPct));
 
   const longs = trades.filter((t) => t.side === 'long');
@@ -386,4 +392,9 @@ function analyze(trades, startingCapital, riskFreeRate = DEFAULT_RISK_FREE_RATE,
   };
 }
 
-module.exports = { analyze, RISK_FREE_RATE: DEFAULT_RISK_FREE_RATE, PERIODS_PER_YEAR };
+// Dual export — server.js `require()`s this, and the browser loads the same
+// file via the /analytics.js route so range filtering can re-run the exact
+// same engine on a sliced window (no second, drifting implementation).
+const __analyticsExports = { analyze, RISK_FREE_RATE: DEFAULT_RISK_FREE_RATE, PERIODS_PER_YEAR };
+if (typeof module !== 'undefined' && module.exports) module.exports = __analyticsExports;
+if (typeof window !== 'undefined') { window.analyze = analyze; window.PERIODS_PER_YEAR = PERIODS_PER_YEAR; }
