@@ -7,7 +7,7 @@
 // Resolve dependencies from Node (require) or the browser (globals set by the
 // engine <script> tags loaded before this one).
 (function () {
-const _dep = (p, name) => (typeof require !== 'undefined' ? require(p)[name] : window[name]);
+const _dep = (p, name) => (typeof require !== 'undefined' ? require(p)[name] : globalThis[name]);
 const parseTradebook        = _dep('./parseTradebook', 'parseTradebook');
 const pairTrades            = _dep('./pairTrades', 'pairTrades');
 const parsePnL              = _dep('./parsePnL', 'parsePnL');
@@ -145,9 +145,9 @@ function runAnalysis({ tradebookBytes, pnlBytes, startingCapital, riskFreeRate, 
 
 const __pipelineExports = { runAnalysis, getContractExpiry, categorizeOpenPositions };
 if (typeof module !== 'undefined' && module.exports) module.exports = __pipelineExports;
-if (typeof window !== 'undefined') {
-  window.runAnalysis = runAnalysis;
-  window.getContractExpiry = getContractExpiry;
-  window.categorizeOpenPositions = categorizeOpenPositions;
+else if (typeof globalThis !== 'undefined') {
+  globalThis.runAnalysis = runAnalysis;
+  globalThis.getContractExpiry = getContractExpiry;
+  globalThis.categorizeOpenPositions = categorizeOpenPositions;
 }
 })();

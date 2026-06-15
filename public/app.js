@@ -613,6 +613,39 @@ const statusError = document.getElementById('status-error');
 const MAX_BYTES = 10 * 1024 * 1024;
 const fileBytes = async f => new Uint8Array(await f.arrayBuffer());
 
+/* Analysis runs in a Web Worker so a large tradebook never blocks the UI.
+   A reused singleton worker; falls back to a synchronous main-thread run if
+   Workers are unavailable (e.g. file://) or the worker fails to load. */
+let analysisWorker = null;
+function getWorker() {
+  if (analysisWorker === null && typeof Worker !== 'undefined') {
+    try { analysisWorker = new Worker('worker.js'); }
+    catch (_) { analysisWorker = false; } // construction blocked → mark unavailable
+  }
+  return analysisWorker || null;
+}
+function analyzeOffThread(payload) {
+  const w = getWorker();
+  if (!w) {
+    // Fallback: run on the main thread (engine + SheetJS are loaded here too).
+    return Promise.resolve(window.runAnalysis(payload));
+  }
+  return new Promise((resolve, reject) => {
+    const cleanup = () => { w.removeEventListener('message', onMsg); w.removeEventListener('error', onErr); };
+    const onMsg = e => { cleanup(); e.data && e.data.ok ? resolve(e.data.data) : reject(new Error((e.data && e.data.error) || 'Analysis failed.')); };
+    const onErr = () => {
+      cleanup();
+      // Worker couldn't load/run — drop it and fall back to the main thread once.
+      try { w.terminate(); } catch (_) {}
+      analysisWorker = false;
+      try { resolve(window.runAnalysis(payload)); } catch (err) { reject(err); }
+    };
+    w.addEventListener('message', onMsg);
+    w.addEventListener('error', onErr);
+    w.postMessage(payload);
+  });
+}
+
 form.addEventListener('submit', async e => {
   e.preventDefault();
   if (!fileInput.files.length) { showError('Choose a Zerodha tradebook first.'); return; }
@@ -631,8 +664,9 @@ form.addEventListener('submit', async e => {
   try {
     const tradebookBytes = await fileBytes(tbFile);
     const pnlBytes = pnlFile ? await fileBytes(pnlFile) : undefined;
-    // Everything runs locally — no network call, data never leaves the browser.
-    const data = window.runAnalysis({
+    // Everything runs locally (in a Worker) — no network call, data never leaves
+    // the browser.
+    const data = await analyzeOffThread({
       tradebookBytes,
       pnlBytes,
       startingCapital: capInput.value,

@@ -401,5 +401,7 @@ function analyze(trades, startingCapital, riskFreeRate = DEFAULT_RISK_FREE_RATE,
 // same engine on a sliced window (no second, drifting implementation).
 const __analyticsExports = { analyze, RISK_FREE_RATE: DEFAULT_RISK_FREE_RATE, PERIODS_PER_YEAR };
 if (typeof module !== 'undefined' && module.exports) module.exports = __analyticsExports;
-if (typeof window !== 'undefined') { window.analyze = analyze; window.PERIODS_PER_YEAR = PERIODS_PER_YEAR; }
+// Browser/Worker: attach to globalThis (=== window on the page, === self in a
+// Worker) so the analysis can run off the main thread.
+else if (typeof globalThis !== 'undefined') { globalThis.analyze = analyze; globalThis.PERIODS_PER_YEAR = PERIODS_PER_YEAR; }
 })();

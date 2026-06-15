@@ -1,6 +1,6 @@
 // SheetJS resolves from Node (require) or the browser (window.XLSX from the CDN).
 (function () {
-const XLSX = (typeof require !== 'undefined') ? require('xlsx') : window.XLSX;
+const XLSX = (typeof require !== 'undefined') ? require('xlsx') : globalThis.XLSX;
 
 // Parses the Zerodha P&L statement (script-wise summary).
 // Detects the data table by looking for a header row containing "Symbol" and "Buy Value".
@@ -75,5 +75,5 @@ function parsePnL(buffer) {
 }
 
 if (typeof module !== 'undefined' && module.exports) module.exports = { parsePnL };
-if (typeof window !== 'undefined') window.parsePnL = parsePnL;
+else if (typeof globalThis !== 'undefined') globalThis.parsePnL = parsePnL;
 })();

@@ -1,7 +1,7 @@
 // SheetJS resolves from Node (require) or the browser (window.XLSX from the CDN
 // script), so this module runs unchanged on the server and in the static build.
 (function () {
-const XLSX = (typeof require !== 'undefined') ? require('xlsx') : window.XLSX;
+const XLSX = (typeof require !== 'undefined') ? require('xlsx') : globalThis.XLSX;
 
 function findHeaderRow(rows) {
   for (let i = 0; i < rows.length; i++) {
@@ -98,5 +98,5 @@ function parseTradebook(buffer) {
 }
 
 if (typeof module !== 'undefined' && module.exports) module.exports = { parseTradebook };
-if (typeof window !== 'undefined') window.parseTradebook = parseTradebook;
+else if (typeof globalThis !== 'undefined') globalThis.parseTradebook = parseTradebook;
 })();

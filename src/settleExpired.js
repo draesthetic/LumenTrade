@@ -97,5 +97,5 @@ function settleExpiredPositions(expiredPositions, closedTrades, fills, pnlEntrie
 
 // Dual export — Node pipeline + browser global for the client-side build.
 if (typeof module !== 'undefined' && module.exports) module.exports = { settleExpiredPositions };
-if (typeof window !== 'undefined') window.settleExpiredPositions = settleExpiredPositions;
+else if (typeof globalThis !== 'undefined') globalThis.settleExpiredPositions = settleExpiredPositions;
 })();

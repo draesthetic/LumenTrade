@@ -33,12 +33,16 @@ server.js                 OPTIONAL local dev server (serves public/ + /engine, /
 .github/workflows/pages.yml  Builds the static site (public/ + src→engine/) and deploys to Pages
 ```
 
-**Stack:** vanilla JS + Chart.js 4 + SheetJS (browser build via CDN) on the frontend — no framework,
-no bundler, no build step. Every `src/` module is a **dual node/browser** file (IIFE-wrapped so the
-classic `<script>` tags don't collide in the shared global scope; each exposes one `window.*`). The
-browser loads them as `engine/*.js` and runs `window.runAnalysis(...)`; the optional `server.js`
-`require()`s the same modules — one source of truth. Range filtering re-runs `window.analyze` on the
-sliced window. Data is processed entirely in-browser and never uploaded.
+**Stack:** vanilla JS + Chart.js 4 + SheetJS on the frontend — no framework, no bundler, no build
+step. SheetJS is **vendored** at `public/vendor/xlsx.full.min.js` (0.20.3) for offline use — no CDN.
+Every `src/` module is a **dual node/browser** file (IIFE-wrapped so the classic `<script>` tags
+don't collide in the shared global scope; each exposes one symbol on `globalThis` — works on the page
+*and* inside a Worker). The analysis runs in a **Web Worker** (`public/worker.js`,
+`importScripts` vendored SheetJS + `engine/*.js`) so a large tradebook never blocks the UI; the submit
+handler `await`s `analyzeOffThread(...)` with a synchronous main-thread fallback if Workers are
+unavailable. Range filtering re-runs `window.analyze` on the main thread (operates on already-parsed
+trades — fast). The optional `server.js` `require()`s the same modules — one source of truth. Data is
+processed entirely in-browser and never uploaded.
 
 **UI (redesigned 2026-06-15 — neo-brutalist "premium paper"):** Implemented from a Claude Design
 handoff bundle. Warm cream paper + warm ink, **monochromatic** with green/red reserved strictly for

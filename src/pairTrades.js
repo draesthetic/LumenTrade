@@ -70,5 +70,5 @@ function pairTrades(fills) {
 // Dual export — used by the Node pipeline and loaded as a browser global so the
 // fully client-side build can pair trades without a server.
 if (typeof module !== 'undefined' && module.exports) module.exports = { pairTrades };
-if (typeof window !== 'undefined') window.pairTrades = pairTrades;
+else if (typeof globalThis !== 'undefined') globalThis.pairTrades = pairTrades;
 })();
