@@ -602,7 +602,7 @@ pnlFileInput.addEventListener('change', () => {
   else { pnlFileName.textContent = 'No file chosen'; pnlFileName.classList.remove('ready'); }
 });
 
-/* ── Form submit → real /upload ──────────────────────────────────────────── */
+/* ── Form submit → run the whole pipeline in-browser ─────────────────────── */
 const form = document.getElementById('upload-form');
 const analyzeBtn = document.getElementById('analyze-btn');
 const statusEl = document.getElementById('status');
@@ -610,18 +610,35 @@ const statusText = document.getElementById('status-text');
 const statusTag = document.getElementById('status-open');
 const statusError = document.getElementById('status-error');
 
+const MAX_BYTES = 10 * 1024 * 1024;
+const fileBytes = async f => new Uint8Array(await f.arrayBuffer());
+
 form.addEventListener('submit', async e => {
   e.preventDefault();
   if (!fileInput.files.length) { showError('Choose a Zerodha tradebook first.'); return; }
+  const tbFile = fileInput.files[0];
+  const pnlFile = pnlFileInput.files[0];
+  if (tbFile.size > MAX_BYTES) { showError('Tradebook exceeds the 10 MB limit.'); return; }
+  if (pnlFile && pnlFile.size > MAX_BYTES) { showError('P&L file exceeds the 10 MB limit.'); return; }
+
   analyzeBtn.disabled = true;
   analyzeBtn.textContent = 'Analyzing…';
   statusEl.classList.remove('show');
   statusError.hidden = true;
+  // Yield so the "Analyzing…" state paints before the synchronous parse/analyze.
+  await new Promise(r => setTimeout(r));
 
   try {
-    const res = await fetch('/upload', { method: 'POST', body: new FormData(form) });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Upload failed.');
+    const tradebookBytes = await fileBytes(tbFile);
+    const pnlBytes = pnlFile ? await fileBytes(pnlFile) : undefined;
+    // Everything runs locally — no network call, data never leaves the browser.
+    const data = window.runAnalysis({
+      tradebookBytes,
+      pnlBytes,
+      startingCapital: capInput.value,
+      riskFreeRate: document.getElementById('riskFreeRate').value,
+      charges: 0,
+    });
 
     render(data);
 

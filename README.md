@@ -1,17 +1,23 @@
 # LumenTrade
 
-Self-hosted Node.js webapp that turns a Zerodha tradebook (.xlsx or .csv) into a NAV curve, drawdown chart, and a full set of profitability / risk / efficiency / behavior metrics.
+Turns a Zerodha tradebook (.xlsx or .csv) into a NAV curve, drawdown chart, and a full set of profitability / risk / efficiency / behaviour metrics. **Fully client-side** — your tradebook and P&L data are parsed and analysed entirely in your browser and never leave your machine, so it runs as a static site (GitHub Pages) with no backend.
 
-## Run
+## Use it
+
+**Hosted:** <https://draesthetic.github.io/LumenTrade/> — drop a Zerodha tradebook (F&O or EQ export), enter starting capital and risk-free rate, optionally add the P&L statement, hit Analyze. Nothing is uploaded anywhere; all processing is local to the page.
+
+**Local (optional dev server):**
 
 ```bash
 npm install
-npm start
+npm start          # http://127.0.0.1:3000
 ```
 
-Then open <http://127.0.0.1:3000>, upload a Zerodha tradebook (F&O or EQ export), enter starting capital, hit Analyze.
+`server.js` is now only a convenience for local development — it serves the same static files and exposes `/upload` for parity testing. The deployed app needs no server.
 
-The server binds to **`127.0.0.1` only** by default — there is no auth in front of it and the upload page exposes real P&L data. To reach it from another machine, either SSH-tunnel (`ssh -L 3000:localhost:3000 host`) or set `HOST=0.0.0.0` explicitly (only do this on a trusted LAN). Express is pinned to `^4.19.2` and resolved to ≥4.21 to pull in fixes for CVE-2024-43796 (`res.sendFile` path traversal) and CVE-2024-43800 (`res.redirect` XSS).
+## Architecture
+
+The analysis pipeline (`src/`) is a set of dual node/browser modules: `parseTradebook`, `pairTrades`, `parsePnL`, `settleExpired`, `analytics`, and `pipeline` (the orchestrator, `runAnalysis`). The browser loads them as `engine/*.js` and runs `window.runAnalysis(...)`; `server.js` `require()`s the exact same modules — one source of truth, no drift. GitHub Pages is built by `.github/workflows/pages.yml`, which copies `public/` to the site root and `src/*.js` into `engine/`.
 
 ## Metrics
 
@@ -25,4 +31,4 @@ Trade pairing uses FIFO queues per symbol, supports partial closes, handles long
 
 ## Stack
 
-Express + multer + SheetJS on the backend, vanilla JS + Chart.js on the frontend. No database, no build step, all in-memory per request.
+Vanilla JS + Chart.js + SheetJS (browser build via CDN) on the frontend — no framework, no bundler, no build step. The optional local dev server is Express + multer + SheetJS. No database; all processing is in-memory in the browser.

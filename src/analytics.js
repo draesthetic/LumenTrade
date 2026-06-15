@@ -1,3 +1,7 @@
+// Wrapped in an IIFE so its many top-level helpers don't leak into the shared
+// global scope when loaded as a classic <script> alongside the other engine
+// files (classic scripts share one lexical environment — name clashes throw).
+(function () {
 const DEFAULT_RISK_FREE_RATE = 0.065;
 const PERIODS_PER_YEAR = 252;
 
@@ -398,3 +402,4 @@ function analyze(trades, startingCapital, riskFreeRate = DEFAULT_RISK_FREE_RATE,
 const __analyticsExports = { analyze, RISK_FREE_RATE: DEFAULT_RISK_FREE_RATE, PERIODS_PER_YEAR };
 if (typeof module !== 'undefined' && module.exports) module.exports = __analyticsExports;
 if (typeof window !== 'undefined') { window.analyze = analyze; window.PERIODS_PER_YEAR = PERIODS_PER_YEAR; }
+})();

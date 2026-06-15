@@ -1,4 +1,7 @@
-const XLSX = require('xlsx');
+// SheetJS resolves from Node (require) or the browser (window.XLSX from the CDN
+// script), so this module runs unchanged on the server and in the static build.
+(function () {
+const XLSX = (typeof require !== 'undefined') ? require('xlsx') : window.XLSX;
 
 function findHeaderRow(rows) {
   for (let i = 0; i < rows.length; i++) {
@@ -38,7 +41,9 @@ function parseTradebook(buffer) {
     buffer = buffer.slice(3);
   }
 
-  const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+  // type:'array' accepts a Uint8Array (browser) or Buffer (Node — Buffer is a
+  // Uint8Array subclass), so both callers pass bytes the same way.
+  const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
   const sheetName = wb.SheetNames[0];
   const sheet = wb.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null });
@@ -92,4 +97,6 @@ function parseTradebook(buffer) {
   return { fills, warnings };
 }
 
-module.exports = { parseTradebook };
+if (typeof module !== 'undefined' && module.exports) module.exports = { parseTradebook };
+if (typeof window !== 'undefined') window.parseTradebook = parseTradebook;
+})();

@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -296,7 +297,14 @@
 
   </div>
 
-  <script src="/analytics.js"></script>
+  <!-- Engine (single source of truth in src/, served at engine/* locally and on Pages).
+       Order matters: analytics + parsers + pair/settle must load before pipeline. -->
+  <script src="engine/analytics.js"></script>
+  <script src="engine/parseTradebook.js"></script>
+  <script src="engine/parsePnL.js"></script>
+  <script src="engine/pairTrades.js"></script>
+  <script src="engine/settleExpired.js"></script>
+  <script src="engine/pipeline.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

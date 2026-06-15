@@ -6,6 +6,7 @@
 // the tradebook fill values from the P&L file totals, we recover the settlement
 // transaction and can synthesize a proper closed-trade record.
 
+(function () {
 function settleExpiredPositions(expiredPositions, closedTrades, fills, pnlEntries) {
   const pnlMap = new Map(pnlEntries.map(e => [e.symbol.toUpperCase(), e]));
   const fillTotals = new Map();
@@ -94,4 +95,7 @@ function settleExpiredPositions(expiredPositions, closedTrades, fills, pnlEntrie
   return { settled, unresolved };
 }
 
-module.exports = { settleExpiredPositions };
+// Dual export — Node pipeline + browser global for the client-side build.
+if (typeof module !== 'undefined' && module.exports) module.exports = { settleExpiredPositions };
+if (typeof window !== 'undefined') window.settleExpiredPositions = settleExpiredPositions;
+})();

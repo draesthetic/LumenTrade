@@ -1,12 +1,14 @@
 # LumenTrade — Project State
 
-> Snapshot for continuation in a fresh session. Last updated 2026-06-15.
+> Snapshot for continuation in a fresh session. Last updated 2026-06-16.
 
 ## What it is
 
-A self-hosted Node.js webapp that turns a **Zerodha tradebook** (`.xlsx`/`.csv`) into a NAV/equity
-curve, drawdown chart, and a full panel of profitability / risk / efficiency / behavior trade
-statistics. No database, no build step — everything is computed in-memory per request.
+A **fully client-side** web app that turns a **Zerodha tradebook** (`.xlsx`/`.csv`) into a NAV/equity
+curve, drawdown chart, and a full panel of profitability / risk / efficiency / behaviour trade
+statistics. As of 2026-06-16 all parsing and analysis run **in the browser** — data never leaves the
+machine — so it deploys as a static site on **GitHub Pages**. `server.js` remains only as an optional
+local dev server. No database, no build step.
 
 - Folder name: `LumenTrade`
 - `package.json` name: `lumentrade` (v1.0.0)
@@ -17,19 +19,26 @@ statistics. No database, no build step — everything is computed in-memory per 
 ## Current architecture
 
 ```
-server.js                 Express app + /upload endpoint + contract-expiry helpers
-src/parseTradebook.js     Parse Zerodha tradebook → normalized fills[]
+src/pipeline.js           runAnalysis() — orchestrator (validate → parse → pair → categorize
+                          → settle → analyze); + getContractExpiry/categorizeOpenPositions
+src/parseTradebook.js     Parse Zerodha tradebook → normalized fills[]   (SheetJS)
 src/pairTrades.js         FIFO long/short round-trip pairing → closed[] + openPositions[]
-src/parsePnL.js           Parse Zerodha P&L statement (script-wise) → entries[]
+src/parsePnL.js           Parse Zerodha P&L statement (script-wise) → entries[]   (SheetJS)
 src/settleExpired.js      Derive settlement prices for expired contracts from P&L file
 src/analytics.js          analyze() → all metrics, equity curve, drawdown curve
-public/index.html         Single-page dashboard (glass UI, Chart.js charts)
-public/app.js             Vanilla-JS frontend (~1157 lines)
-public/styles.css         Styling (~995 lines, light/dark)
+public/index.html         Single-page dashboard; loads engine/*.js + app.js
+public/app.js             Vanilla-JS frontend; calls window.runAnalysis() locally
+public/styles.css         Neo-brutalist "premium paper" styling
+server.js                 OPTIONAL local dev server (serves public/ + /engine, /upload parity)
+.github/workflows/pages.yml  Builds the static site (public/ + src→engine/) and deploys to Pages
 ```
 
-**Stack:** Express 4 + multer (memory storage) + SheetJS (`xlsx`) on the backend; vanilla JS +
-Chart.js 4 (via CDN) on the frontend. No framework, no bundler.
+**Stack:** vanilla JS + Chart.js 4 + SheetJS (browser build via CDN) on the frontend — no framework,
+no bundler, no build step. Every `src/` module is a **dual node/browser** file (IIFE-wrapped so the
+classic `<script>` tags don't collide in the shared global scope; each exposes one `window.*`). The
+browser loads them as `engine/*.js` and runs `window.runAnalysis(...)`; the optional `server.js`
+`require()`s the same modules — one source of truth. Range filtering re-runs `window.analyze` on the
+sliced window. Data is processed entirely in-browser and never uploaded.
 
 **UI (redesigned 2026-06-15 — neo-brutalist "premium paper"):** Implemented from a Claude Design
 handoff bundle. Warm cream paper + warm ink, **monochromatic** with green/red reserved strictly for

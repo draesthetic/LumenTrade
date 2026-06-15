@@ -1,3 +1,4 @@
+(function () {
 function pairTrades(fills) {
   const books = new Map();
   const closed = [];
@@ -66,4 +67,8 @@ function pairTrades(fills) {
   return { closed, openPositions };
 }
 
-module.exports = { pairTrades };
+// Dual export — used by the Node pipeline and loaded as a browser global so the
+// fully client-side build can pair trades without a server.
+if (typeof module !== 'undefined' && module.exports) module.exports = { pairTrades };
+if (typeof window !== 'undefined') window.pairTrades = pairTrades;
+})();

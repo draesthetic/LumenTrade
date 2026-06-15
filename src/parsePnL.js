@@ -1,10 +1,12 @@
-const XLSX = require('xlsx');
+// SheetJS resolves from Node (require) or the browser (window.XLSX from the CDN).
+(function () {
+const XLSX = (typeof require !== 'undefined') ? require('xlsx') : window.XLSX;
 
 // Parses the Zerodha P&L statement (script-wise summary).
 // Detects the data table by looking for a header row containing "Symbol" and "Buy Value".
 // Returns an array of { symbol, buyValue, sellValue, realizedPnl, openQty, openType, openValue }
 function parsePnL(buffer) {
-  const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+  const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
   const sheet = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null });
 
@@ -72,4 +74,6 @@ function parsePnL(buffer) {
   return entries;
 }
 
-module.exports = { parsePnL };
+if (typeof module !== 'undefined' && module.exports) module.exports = { parsePnL };
+if (typeof window !== 'undefined') window.parsePnL = parsePnL;
+})();

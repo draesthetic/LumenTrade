@@ -1,0 +1,47 @@
+name: Deploy LumenTrade to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Allow the workflow to publish to Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One concurrent deploy; don't cancel an in-progress run.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Assemble the static site: public/ at the root, the engine modules from
+      # src/ copied to engine/ (src/ stays the single source of truth), and a
+      # .nojekyll marker so Pages serves files verbatim.
+      - name: Build static site
+        run: |
+          mkdir -p _site/engine
+          cp -r public/. _site/
+          cp src/*.js _site/engine/
+          touch _site/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
